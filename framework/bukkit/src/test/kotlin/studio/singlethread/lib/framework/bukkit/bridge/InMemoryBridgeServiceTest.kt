@@ -1,7 +1,12 @@
 package studio.singlethread.lib.framework.bukkit.bridge
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import studio.singlethread.lib.framework.api.bridge.BridgeChannel
+import studio.singlethread.lib.framework.api.bridge.BridgeCodec
+import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
+import java.util.concurrent.TimeUnit
 
 class InMemoryBridgeServiceTest {
     @Test
@@ -41,4 +46,53 @@ class InMemoryBridgeServiceTest {
 
         assertEquals(emptyList<String>(), received)
     }
+
+    @Test
+    fun `request should return success when handler is registered`() {
+        val service = InMemoryBridgeService()
+        val channel = BridgeChannel.of("test", "sum")
+
+        service.respond(
+            channel = channel,
+            requestCodec = stringCodec(),
+            responseCodec = stringCodec(),
+        ) { request ->
+            val tokens = request.payload.split(",")
+            val left = tokens[0].toInt()
+            val right = tokens[1].toInt()
+            studio.singlethread.lib.framework.api.bridge.BridgeRequestResult.success((left + right).toString())
+        }
+
+        val response =
+            service.request(
+                channel = channel,
+                payload = "2,3",
+                requestCodec = stringCodec(),
+                responseCodec = stringCodec(),
+                timeoutMillis = 500,
+            ).get(2, TimeUnit.SECONDS)
+
+        assertEquals(BridgeResponseStatus.SUCCESS, response.status)
+        assertEquals("5", response.payload)
+        assertNotNull(response.responderNode)
+    }
+
+    @Test
+    fun `request should return no handler when channel has no responder`() {
+        val service = InMemoryBridgeService()
+        val channel = BridgeChannel.of("test", "missing")
+
+        val response =
+            service.request(
+                channel = channel,
+                payload = "data",
+                requestCodec = stringCodec(),
+                responseCodec = stringCodec(),
+                timeoutMillis = 200,
+            ).get(2, TimeUnit.SECONDS)
+
+        assertEquals(BridgeResponseStatus.NO_HANDLER, response.status)
+    }
+
+    private fun stringCodec(): BridgeCodec<String> = StringBridgeCodec
 }

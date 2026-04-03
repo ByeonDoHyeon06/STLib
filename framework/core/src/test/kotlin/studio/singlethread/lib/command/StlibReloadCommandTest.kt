@@ -13,7 +13,7 @@ class StlibReloadCommandTest {
                 translate = { key, placeholders ->
                     when (key) {
                         "stlib.command.reload.success" ->
-                            "ok:${placeholders["configs"]}:${placeholders["profile"]}:${placeholders["dashboard"]}:${placeholders["persist"]}:${placeholders["persist_active"]}:${placeholders["command_metrics"]}"
+                            "ok:${placeholders["configs"]}:${placeholders["profile"]}:${placeholders["dashboard"]}:${placeholders["persist"]}:${placeholders["persist_active"]}:${placeholders["command_metrics"]}:${placeholders["scheduler"]}:${placeholders["di_discovered"]}:${placeholders["di_validated"]}:${placeholders["bridge_mode"]}:${placeholders["bridge_distributed"]}:${placeholders["bridge_node"]}"
                         else -> key
                     }
                 },
@@ -27,13 +27,19 @@ class StlibReloadCommandTest {
                         persistenceEnabled = false,
                         persistenceActive = false,
                         commandMetricsEnabled = false,
+                        schedulerEnabled = true,
+                        diDiscovered = 4,
+                        diValidated = 4,
+                        bridgeMode = "local",
+                        bridgeDistributed = false,
+                        bridgeNodeId = "stlib-25565",
                     )
                 },
             )
 
         command.execute(context(replies))
 
-        assertEquals(listOf("ok:3:core_ops:true:false:false:false"), replies)
+        assertEquals(listOf("ok:3:core_ops:true:false:false:false:true:4:4:local:false:stlib-25565"), replies)
     }
 
     @Test

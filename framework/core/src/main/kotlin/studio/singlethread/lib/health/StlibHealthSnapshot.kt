@@ -14,6 +14,12 @@ data class StlibHealthSnapshot(
     val persistenceEnabled: Boolean,
     val persistenceActive: Boolean,
     val commandMetricsEnabled: Boolean,
+    val schedulerEnabled: Boolean,
+    val diDiscovered: Int,
+    val diValidated: Int,
+    val bridgeMode: String,
+    val bridgeDistributed: Boolean,
+    val bridgeRedisConnected: Boolean,
     val plugins: List<StlibPluginHealthSnapshot>,
 )
 

@@ -27,15 +27,20 @@ class PluginFileConfigLoaderTest {
         assertTrue(dataDir.resolve("config/plugin.yml").toFile().exists())
         assertTrue(dataDir.resolve("config/storage.yml").toFile().exists())
         assertTrue(dataDir.resolve("config/depend.yml").toFile().exists())
+        assertTrue(dataDir.resolve("config/bridge.yml").toFile().exists())
         assertEquals("1.2.3", config.plugin.version)
         assertFalse(config.plugin.debug)
         assertEquals(StorageBackendType.JSON, config.storage.backend)
         assertEquals("sampleplugin", config.storage.namespace)
         assertTrue(config.dependencies.runtime.loadDatabaseDrivers)
+        assertTrue(config.dependencies.runtime.loadRedisBridge)
         assertTrue(config.dependencies.integrations.nexo)
         assertTrue(config.dependencies.integrations.mmoItems)
         assertTrue(config.dependencies.integrations.ecoItems)
         assertTrue(config.dependencies.integrations.placeholderApi)
+        assertEquals(BridgeMode.LOCAL, config.bridge.mode)
+        assertEquals("stlib", config.bridge.namespace)
+        assertEquals(3_000L, config.bridge.requestTimeoutMillis)
     }
 
     @Test

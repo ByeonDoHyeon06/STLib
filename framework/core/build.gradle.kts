@@ -4,6 +4,7 @@ dependencies {
     implementation(project(":framework:bukkit"))
     implementation(project(":configurate"))
     implementation(project(":storage:common"))
+    implementation(project(":platform:common"))
     implementation("org.spongepowered:configurate-yaml:4.2.0")
 
     compileOnly("io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT")

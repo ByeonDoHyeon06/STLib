@@ -9,6 +9,12 @@ data class StlibReloadSnapshot(
     val persistenceEnabled: Boolean,
     val persistenceActive: Boolean,
     val commandMetricsEnabled: Boolean,
+    val schedulerEnabled: Boolean,
+    val diDiscovered: Int,
+    val diValidated: Int,
+    val bridgeMode: String,
+    val bridgeDistributed: Boolean,
+    val bridgeNodeId: String,
 )
 
 class StlibReloadCommand(
@@ -37,6 +43,12 @@ class StlibReloadCommand(
                             "persist" to snapshot.persistenceEnabled.toString(),
                             "persist_active" to snapshot.persistenceActive.toString(),
                             "command_metrics" to snapshot.commandMetricsEnabled.toString(),
+                            "scheduler" to snapshot.schedulerEnabled.toString(),
+                            "di_discovered" to snapshot.diDiscovered.toString(),
+                            "di_validated" to snapshot.diValidated.toString(),
+                            "bridge_mode" to snapshot.bridgeMode,
+                            "bridge_distributed" to snapshot.bridgeDistributed.toString(),
+                            "bridge_node" to snapshot.bridgeNodeId,
                         ),
                     ),
                 )

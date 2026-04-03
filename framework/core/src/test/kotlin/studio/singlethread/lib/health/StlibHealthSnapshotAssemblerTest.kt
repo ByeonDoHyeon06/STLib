@@ -53,6 +53,12 @@ class StlibHealthSnapshotAssemblerTest {
                 },
                 dashboardProfile = { "core_ops" },
                 commandMetricsEnabled = { false },
+                schedulerEnabled = { true },
+                diDiscovered = { 6 },
+                diValidated = { 6 },
+                bridgeMode = { "composite" },
+                bridgeDistributed = { true },
+                bridgeRedisConnected = { true },
                 now = { Instant.parse("2026-04-02T12:10:00Z") },
             )
 
@@ -63,6 +69,12 @@ class StlibHealthSnapshotAssemblerTest {
         assertEquals(true, snapshot.persistenceEnabled)
         assertEquals(false, snapshot.persistenceActive)
         assertEquals(false, snapshot.commandMetricsEnabled)
+        assertEquals(true, snapshot.schedulerEnabled)
+        assertEquals(6, snapshot.diDiscovered)
+        assertEquals(6, snapshot.diValidated)
+        assertEquals("composite", snapshot.bridgeMode)
+        assertEquals(true, snapshot.bridgeDistributed)
+        assertEquals(true, snapshot.bridgeRedisConnected)
         assertEquals(2, snapshot.plugins.size)
         assertEquals("Alpha", snapshot.plugins[0].name)
         assertEquals(0, snapshot.plugins[0].healthIssueCount)

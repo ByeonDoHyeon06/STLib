@@ -13,11 +13,14 @@ import studio.singlethread.lib.dashboard.StlibDashboardRuntimeController
 import studio.singlethread.lib.dashboard.StlibDashboardService
 import studio.singlethread.lib.dashboard.StlibStorageCapabilityPolicy
 import studio.singlethread.lib.dashboard.StlibStatsStore
+import studio.singlethread.lib.framework.api.kernel.service
+import studio.singlethread.lib.framework.bukkit.bridge.BridgeRuntimeInfo
 import studio.singlethread.lib.framework.bukkit.lifecycle.STPlugin
 import studio.singlethread.lib.health.StlibHealthSnapshotAssembler
 import studio.singlethread.lib.ui.StlibDashboardMenuItemFactory
 import studio.singlethread.lib.ui.StlibDashboardNavigator
 import studio.singlethread.lib.lifecycle.StlibLifecycleLogger
+import studio.singlethread.lib.platform.common.capability.CapabilityNames
 import java.nio.file.Files
 import java.time.Instant
 import java.time.ZoneId
@@ -83,6 +86,18 @@ class STLib : STPlugin() {
             runtimeState = dashboardRuntimeController::state,
             dashboardProfile = { runtimeConfig.dashboard.profile },
             commandMetricsEnabled = ::isCommandMetricsEnabled,
+            schedulerEnabled = { capabilityRegistry.isEnabled(CapabilityNames.RUNTIME_SCHEDULER) },
+            diDiscovered = { diComponentSummary()?.discovered ?: 0 },
+            diValidated = { diComponentSummary()?.validated ?: 0 },
+            bridgeMode = { kernel.service(BridgeRuntimeInfo::class)?.mode?.name?.lowercase() ?: "unknown" },
+            bridgeDistributed = {
+                kernel.service(BridgeRuntimeInfo::class)?.distributedEnabled
+                    ?: capabilityRegistry.isEnabled(CapabilityNames.BRIDGE_DISTRIBUTED)
+            },
+            bridgeRedisConnected = {
+                kernel.service(BridgeRuntimeInfo::class)?.redisConnected
+                    ?: capabilityRegistry.isEnabled(CapabilityNames.BRIDGE_REDIS)
+            },
         )
     }
     private val dashboardRuntimeController by lazy {
@@ -221,6 +236,8 @@ class STLib : STPlugin() {
         dashboardRuntimeController.initialize()
         dashboardRuntimeController.start()
         val healthSnapshot = healthSnapshotProvider.snapshot()
+        val bridgeInfo = kernel.service(BridgeRuntimeInfo::class)
+        val diSummary = diComponentSummary()
 
         return StlibReloadSnapshot(
             reloadedConfigCount = reloaded.size,
@@ -229,6 +246,13 @@ class STLib : STPlugin() {
             persistenceEnabled = healthSnapshot.persistenceEnabled,
             persistenceActive = healthSnapshot.persistenceActive,
             commandMetricsEnabled = healthSnapshot.commandMetricsEnabled,
+            schedulerEnabled = capabilityRegistry.isEnabled(CapabilityNames.RUNTIME_SCHEDULER),
+            diDiscovered = diSummary?.discovered ?: 0,
+            diValidated = diSummary?.validated ?: 0,
+            bridgeMode = bridgeInfo?.mode?.name?.lowercase() ?: "unknown",
+            bridgeDistributed =
+                bridgeInfo?.distributedEnabled ?: capabilityRegistry.isEnabled(CapabilityNames.BRIDGE_DISTRIBUTED),
+            bridgeNodeId = bridgeInfo?.nodeId?.value ?: bridgeNodeId().value,
         )
     }
 

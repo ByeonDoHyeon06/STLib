@@ -7,6 +7,7 @@ import studio.singlethread.lib.dependency.bukkit.loader.BukkitLibbyDependencyLoa
 import studio.singlethread.lib.dependency.common.model.DependencyLoadResult
 import studio.singlethread.lib.dependency.common.model.DependencyStatus
 import studio.singlethread.lib.dependency.common.model.LibraryDescriptor
+import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.capability.CapabilityRegistry
 import studio.singlethread.lib.framework.api.config.ConfigRegistry
@@ -18,8 +19,13 @@ import studio.singlethread.lib.framework.api.notifier.NotifierService
 import studio.singlethread.lib.framework.api.scheduler.SchedulerService
 import studio.singlethread.lib.framework.api.text.TextService
 import studio.singlethread.lib.framework.api.translation.TranslationService
+import studio.singlethread.lib.framework.bukkit.bridge.BridgeRuntimeInfo
+import studio.singlethread.lib.framework.bukkit.bridge.CompositeBridgeService
 import studio.singlethread.lib.framework.bukkit.bridge.InMemoryBridgeService
+import studio.singlethread.lib.framework.bukkit.bridge.NamespacedBridgeService
+import studio.singlethread.lib.framework.bukkit.bridge.RedissonBridgeService
 import studio.singlethread.lib.framework.bukkit.config.BukkitConfigRegistry
+import studio.singlethread.lib.framework.bukkit.config.BridgeMode
 import studio.singlethread.lib.framework.bukkit.config.PluginFileConfig
 import studio.singlethread.lib.framework.bukkit.config.PluginFileConfigLoader
 import studio.singlethread.lib.framework.bukkit.config.StorageBackendType
@@ -112,11 +118,11 @@ object BukkitKernelBootstrapper {
         kernel.registerService(SchedulerService::class, BukkitSchedulerService(plugin))
         capabilities.enable(CapabilityNames.RUNTIME_SCHEDULER)
 
-        kernel.registerService(BridgeService::class, InMemoryBridgeService())
-        capabilities.enable(CapabilityNames.BRIDGE_LOCAL)
-        capabilities.disable(CapabilityNames.BRIDGE_DISTRIBUTED, "No distributed bridge backend configured")
-
         val dependencyLoader = BukkitLibbyDependencyLoader(plugin)
+        val bridgeBootstrap = createBridgeService(plugin, pluginConfig, capabilities, dependencyLoader)
+        kernel.registerService(BridgeService::class, bridgeBootstrap.service)
+        kernel.registerService(BridgeRuntimeInfo::class, bridgeBootstrap.runtimeInfo)
+
         val runtimeLoadResults = loadRuntimeDatabaseDependencies(pluginConfig, dependencyLoader)
         markDatabaseCapabilities(kernel, runtimeLoadResults)
 
@@ -168,6 +174,139 @@ object BukkitKernelBootstrapper {
 
         capabilities.disable(CapabilityNames.TEXT_PLACEHOLDERAPI, "PlaceholderAPI bridge initialization failed")
         return NoopPlaceholderResolver
+    }
+
+    private fun createBridgeService(
+        plugin: JavaPlugin,
+        pluginConfig: PluginFileConfig,
+        capabilities: CapabilityRegistry,
+        dependencyLoader: BukkitLibbyDependencyLoader,
+    ): BridgeBootstrapResult {
+        val bridgeConfig = pluginConfig.bridge
+        val nodeId = resolveNodeId(plugin, bridgeConfig.nodeId)
+        val localBridge = InMemoryBridgeService(nodeId)
+
+        capabilities.enable(CapabilityNames.BRIDGE_CODEC)
+        capabilities.enable(CapabilityNames.BRIDGE_RPC)
+
+        val distributed = createDistributedBridge(plugin, pluginConfig, dependencyLoader, nodeId, capabilities)
+        val rootBridge =
+            when (bridgeConfig.mode) {
+                BridgeMode.LOCAL -> localBridge
+                BridgeMode.REDIS -> distributed ?: localBridge
+                BridgeMode.COMPOSITE -> CompositeBridgeService(local = localBridge, distributed = distributed)
+            }
+
+        val localEnabled = bridgeConfig.mode != BridgeMode.REDIS || distributed == null
+        if (localEnabled) {
+            capabilities.enable(CapabilityNames.BRIDGE_LOCAL)
+        } else {
+            capabilities.disable(CapabilityNames.BRIDGE_LOCAL, "Bridge mode is redis-only")
+        }
+
+        val distributedEnabled = distributed != null
+        if (distributedEnabled) {
+            capabilities.enable(CapabilityNames.BRIDGE_DISTRIBUTED)
+            capabilities.enable(CapabilityNames.BRIDGE_REDIS)
+        } else {
+            capabilities.disable(CapabilityNames.BRIDGE_DISTRIBUTED, "Distributed bridge backend unavailable")
+            capabilities.disable(CapabilityNames.BRIDGE_REDIS, "Redisson backend unavailable")
+        }
+
+        val message =
+            when {
+                bridgeConfig.mode == BridgeMode.LOCAL ->
+                    "mode=local, nodeId=${nodeId.value}, namespace=${bridgeConfig.namespace}"
+
+                distributedEnabled ->
+                    "mode=${bridgeConfig.mode.name.lowercase()}, nodeId=${nodeId.value}, namespace=${bridgeConfig.namespace}, distributed=redis"
+
+                else ->
+                    "mode=${bridgeConfig.mode.name.lowercase()}, nodeId=${nodeId.value}, namespace=${bridgeConfig.namespace}, fallback=local"
+            }
+        plugin.logger.info("Bridge bootstrap: $message")
+
+        val runtimeInfo =
+            BridgeRuntimeInfo(
+                mode = bridgeConfig.mode,
+                nodeId = nodeId,
+                namespace = bridgeConfig.namespace,
+                requestTimeoutMillis = bridgeConfig.requestTimeoutMillis,
+                distributedEnabled = distributedEnabled,
+                redisConnected = distributedEnabled,
+                message = message,
+            )
+
+        return BridgeBootstrapResult(
+            service = NamespacedBridgeService(rootBridge, bridgeConfig.namespace),
+            runtimeInfo = runtimeInfo,
+        )
+    }
+
+    private fun createDistributedBridge(
+        plugin: JavaPlugin,
+        pluginConfig: PluginFileConfig,
+        dependencyLoader: BukkitLibbyDependencyLoader,
+        nodeId: BridgeNodeId,
+        capabilities: CapabilityRegistry,
+    ): BridgeService? {
+        val mode = pluginConfig.bridge.mode
+        if (mode == BridgeMode.LOCAL) {
+            return null
+        }
+
+        val redissonLibrary =
+            LibraryDescriptor(
+                groupId = "org.redisson",
+                artifactId = "redisson",
+                version = "3.35.0",
+            )
+
+        val loadResult =
+            if (pluginConfig.dependencies.runtime.loadRedisBridge) {
+                dependencyLoader.load(redissonLibrary)
+            } else {
+                DependencyLoadResult(
+                    library = redissonLibrary,
+                    status = DependencyStatus.SKIPPED,
+                    message = "Redis bridge dependency loading disabled by config/depend.yml",
+                )
+            }
+
+        if (loadResult.status != DependencyStatus.LOADED) {
+            plugin.logger.warning(
+                "Distributed bridge dependency unavailable: ${loadResult.message ?: loadResult.status.name.lowercase()}",
+            )
+            capabilities.disable(
+                CapabilityNames.BRIDGE_REDIS,
+                loadResult.message ?: "Redisson dependency is unavailable",
+            )
+            return null
+        }
+
+        return RedissonBridgeService.createOrNull(
+            nodeId = nodeId,
+            namespace = pluginConfig.bridge.namespace,
+            redis = pluginConfig.bridge.redis,
+            logWarning = plugin.logger::warning,
+        )?.also {
+            capabilities.enable(CapabilityNames.BRIDGE_REDIS)
+        } ?: run {
+            capabilities.disable(CapabilityNames.BRIDGE_REDIS, "Redisson backend initialization failed")
+            null
+        }
+    }
+
+    private fun resolveNodeId(
+        plugin: JavaPlugin,
+        configured: String,
+    ): BridgeNodeId {
+        val trimmed = configured.trim()
+        if (trimmed.isNotBlank() && !trimmed.equals("auto", ignoreCase = true)) {
+            return BridgeNodeId(trimmed)
+        }
+        val fallback = "${plugin.name.lowercase()}-${Bukkit.getPort()}"
+        return BridgeNodeId(fallback)
     }
 
     private fun loadRuntimeDatabaseDependencies(
@@ -423,6 +562,11 @@ object BukkitKernelBootstrapper {
         val reason = result.message ?: failureReason
         capabilities.disable(capability, reason)
     }
+
+    private data class BridgeBootstrapResult(
+        val service: BridgeService,
+        val runtimeInfo: BridgeRuntimeInfo,
+    )
 
     private fun createTranslationService(
         plugin: JavaPlugin,

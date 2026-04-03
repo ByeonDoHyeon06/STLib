@@ -19,7 +19,7 @@ stlib:
     plugin_count: "로드된 STPlugin 엔트리: {count}"
     plugin_entry: "- {name} v{version} [{status}]"
     reload:
-      success: "<green>리로드 완료:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}"
+      success: "<green>리로드 완료:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}, scheduler={scheduler}, di={di_discovered}/{di_validated}, bridgeMode={bridge_mode}, bridgeDistributed={bridge_distributed}, bridgeNode={bridge_node}"
       failed: "<red>리로드 실패:</red> {reason}"
   gui:
     title:

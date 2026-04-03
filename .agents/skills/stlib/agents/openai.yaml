@@ -1,4 +1,0 @@
-interface:
-  display_name: "STLib Framework"
-  short_description: "Build STLib-based Bukkit plugins and modules"
-  default_prompt: "Use $stlib to implement or review STPlugin lifecycle, events, storage, and resource integration changes."

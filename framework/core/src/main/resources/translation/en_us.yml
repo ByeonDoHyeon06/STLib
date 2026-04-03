@@ -19,7 +19,7 @@ stlib:
     plugin_count: "Loaded STPlugin entries: {count}"
     plugin_entry: "- {name} v{version} [{status}]"
     reload:
-      success: "<green>Reload complete:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}"
+      success: "<green>Reload complete:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}, scheduler={scheduler}, di={di_discovered}/{di_validated}, bridgeMode={bridge_mode}, bridgeDistributed={bridge_distributed}, bridgeNode={bridge_node}"
       failed: "<red>Reload failed:</red> {reason}"
   gui:
     title:
