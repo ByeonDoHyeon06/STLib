@@ -1,0 +1,200 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.gradleup.shadow",
+    "module": "shadow-gradle-plugin",
+    "version": "8.3.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.9"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "files": [
+        {
+          "name": "shadow-gradle-plugin-8.3.0.jar",
+          "url": "shadow-gradle-plugin-8.3.0.jar",
+          "size": 358662,
+          "sha512": "0a1e3fb6f9a0225b25405905c40413255acd74ee243816e0d8d2d9fc9c87c0ee53b9fed4f505c21ab972673f7384b75b4c1e98cb4dc9022b0bc42925107efefb",
+          "sha256": "98d64dc93940699fa4a34f0fd829e77134a768fae207a7e2ec763ca673ac433e",
+          "sha1": "b91c5c4329ad846d76564be2378e555b67097ba6",
+          "md5": "d481a72bf8ce2d0e0a3b15d9190518c1"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.jdom",
+          "module": "jdom2",
+          "version": {
+            "requires": "2.0.6.1"
+          }
+        },
+        {
+          "group": "org.ow2.asm",
+          "module": "asm",
+          "version": {
+            "requires": "9.7"
+          }
+        },
+        {
+          "group": "org.ow2.asm",
+          "module": "asm-commons",
+          "version": {
+            "requires": "9.7"
+          }
+        },
+        {
+          "group": "commons-io",
+          "module": "commons-io",
+          "version": {
+            "requires": "2.16.1"
+          }
+        },
+        {
+          "group": "org.apache.ant",
+          "module": "ant",
+          "version": {
+            "requires": "1.10.14"
+          }
+        },
+        {
+          "group": "org.codehaus.plexus",
+          "module": "plexus-utils",
+          "version": {
+            "requires": "4.0.1"
+          }
+        },
+        {
+          "group": "org.codehaus.plexus",
+          "module": "plexus-xml",
+          "version": {
+            "requires": "4.0.4"
+          }
+        },
+        {
+          "group": "org.apache.logging.log4j",
+          "module": "log4j-core",
+          "version": {
+            "requires": "2.23.1"
+          }
+        },
+        {
+          "group": "org.vafer",
+          "module": "jdependency",
+          "version": {
+            "requires": "2.10"
+          },
+          "excludes": [
+            {
+              "group": "org.ow2.asm",
+              "module": "*"
+            }
+          ]
+        }
+      ],
+      "files": [
+        {
+          "name": "shadow-gradle-plugin-8.3.0.jar",
+          "url": "shadow-gradle-plugin-8.3.0.jar",
+          "size": 358662,
+          "sha512": "0a1e3fb6f9a0225b25405905c40413255acd74ee243816e0d8d2d9fc9c87c0ee53b9fed4f505c21ab972673f7384b75b4c1e98cb4dc9022b0bc42925107efefb",
+          "sha256": "98d64dc93940699fa4a34f0fd829e77134a768fae207a7e2ec763ca673ac433e",
+          "sha1": "b91c5c4329ad846d76564be2378e555b67097ba6",
+          "md5": "d481a72bf8ce2d0e0a3b15d9190518c1"
+        }
+      ]
+    },
+    {
+      "name": "shadowRuntimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "shadowed",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.codehaus.groovy",
+          "module": "groovy-backports-compat23",
+          "version": {
+            "requires": "3.0.8"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "shadow-gradle-plugin-8.3.0-all.jar",
+          "url": "shadow-gradle-plugin-8.3.0-all.jar",
+          "size": 8471245,
+          "sha512": "65ccc856ad99346bc92805f0cf76172c977585e5693e2fd4a9a3dee511fbb96c6b12ff8c76e8918f675135b3bd287fe6fc64e4384f492e276d874f2b540f9d68",
+          "sha256": "ab76c37fc9d45c86f8624008619f2edf2882955374205cb304313d8b929d7b5d",
+          "sha1": "ea72bffcbd2df0d78cfba88347a1407f098d7348",
+          "md5": "6b3453ad3d12417d9b1926612987b7ed"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "shadow-gradle-plugin-8.3.0-javadoc.jar",
+          "url": "shadow-gradle-plugin-8.3.0-javadoc.jar",
+          "size": 99742,
+          "sha512": "8c8e63ec480beca97a5bba39ff6f913d4768a7d256ac014b60f623a18b8bf384f7e1fd07f204db4a3c894ad098dffc2cf96356002b00f453bc8209f72113667b",
+          "sha256": "6598504d0f2f7b20d0c12ceba98566d63f03dd297b88acbf7c042a7a8c8b4484",
+          "sha1": "288dcd88693ce92e308f2c6d8d7780c9c33800d8",
+          "md5": "7d04f3c7afdd53ee2dd64b64b02ba620"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "shadow-gradle-plugin-8.3.0-sources.jar",
+          "url": "shadow-gradle-plugin-8.3.0-sources.jar",
+          "size": 64008,
+          "sha512": "dfed6451a0e56f804aac9c756ead6be1bd39621d4a713a9fdc512ea1657decce67528240dcb28b9f291f03f77d6eefeb18582376904cfeb0cfa857326c5de50b",
+          "sha256": "c8688cf0ce096a4868e50178b6c8407368e3fdca9f2a5c8c6e17ffae3ce841b7",
+          "sha1": "f1f20e17f77184dbc8f6d9bb97963b9b4647b07d",
+          "md5": "572dac1b9f1e7d24a540e340f692f04c"
+        }
+      ]
+    }
+  ]
+}

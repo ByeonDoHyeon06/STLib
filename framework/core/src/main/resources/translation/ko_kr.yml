@@ -1,0 +1,73 @@
+command:
+  stlib:
+    description: "STLib 런타임 상태를 출력합니다"
+  stlibgui:
+    description: "STPlugin 대시보드를 엽니다"
+stlib:
+  lifecycle:
+    initialize: "STLib 초기화 단계"
+    load_complete: "STLib 로드 단계 완료"
+    enabled: "STLib 활성화 완료"
+    disabled: "STLib 비활성화 완료"
+  log:
+    command_invoked: "{sender} 가 /stlib 명령어를 실행했습니다"
+    gui_invoked: "{sender} 가 /stlibgui 명령어를 실행했습니다"
+    reload_invoked: "{sender} 가 /stlib reload 명령어를 실행했습니다"
+  command:
+    player_only: "<red>이 명령어는 플레이어만 사용할 수 있습니다.</red>"
+    backend: "STLib 저장소 백엔드: {backend}"
+    plugin_count: "로드된 STPlugin 엔트리: {count}"
+    plugin_entry: "- {name} v{version} [{status}]"
+    reload:
+      success: "<green>리로드 완료:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}"
+      failed: "<red>리로드 실패:</red> {reason}"
+  gui:
+    title:
+      list: "<gold>STPlugin 대시보드</gold> <gray>({page}/{total})</gray>"
+      detail: "<gold>{name}</gold> <gray>상세 정보</gray>"
+    plugin_name: "<yellow>{name}</yellow>"
+    status:
+      enabled: "<green>활성화</green>"
+      disabled: "<red>비활성화</red>"
+      loaded: "<yellow>로드됨</yellow>"
+    value:
+      none: "<gray>없음</gray>"
+    lore:
+      version: "<gray>버전:</gray> <white>{version}</white>"
+      runtime_status: "<gray>상태:</gray> {status}"
+      uptime: "<gray>업타임:</gray> <white>{uptime}</white>"
+      capability_summary: "<gray>Capability (ON/OFF):</gray> <white>{summary}</white>"
+      detail_open: "<aqua>좌클릭으로 상세 보기</aqua>"
+    detail:
+      identity_title: "<yellow>기본 정보</yellow>"
+      lifecycle_title: "<yellow>라이프사이클</yellow>"
+      capability_title: "<yellow>Capability 요약</yellow>"
+      health_title: "<yellow>헬스 요약</yellow>"
+      main_class: "<gray>메인 클래스:</gray> <white>{main_class}</white>"
+      loaded_at: "<gray>로드 시각:</gray> <white>{time}</white>"
+      enabled_at: "<gray>활성화 시각:</gray> <white>{time}</white>"
+      disabled_at: "<gray>비활성화 시각:</gray> <white>{time}</white>"
+      total_enable_count: "<gray>누적 활성화 횟수:</gray> <white>{count}</white>"
+      total_disable_count: "<gray>누적 비활성화 횟수:</gray> <white>{count}</white>"
+      capability_updated_at: "<gray>Capability 갱신 시각:</gray> <white>{time}</white>"
+      health_level: "<gray>헬스 레벨:</gray> <white>{value}</white>"
+      health_issue_count: "<gray>이슈 수:</gray> <white>{count}</white>"
+      last_lifecycle_at: "<gray>마지막 라이프사이클 이벤트:</gray> <white>{time}</white>"
+    health:
+      healthy: "<green>정상</green>"
+      degraded: "<yellow>주의</yellow>"
+    control:
+      previous: "<yellow>이전 페이지</yellow>"
+      next: "<yellow>다음 페이지</yellow>"
+      refresh: "<green>새로고침</green>"
+      close: "<red>닫기</red>"
+      back: "<yellow>뒤로</yellow>"
+      hint: "<gray>클릭</gray>"
+    feedback:
+      not_found: "<red>{plugin} 플러그인을 찾을 수 없습니다.</red>"
+      dashboard_disabled_config: "<red>STPlugin 대시보드는 config/stlib.yml 설정으로 비활성화되어 있습니다.</red>"
+      dashboard_unavailable: "<red>STPlugin 대시보드를 현재 사용할 수 없습니다.</red>"
+      open_failed: "<red>STPlugin 대시보드를 열지 못했습니다. 콘솔을 확인해주세요.</red>"
+    empty:
+      title: "<gray>관리할 플러그인이 없습니다</gray>"
+      description: "<dark_gray>표시할 STPlugin 엔트리가 없습니다.</dark_gray>"

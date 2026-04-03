@@ -1,0 +1,132 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.spongepowered",
+    "module": "configurate-hocon",
+    "version": "4.1.2",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "7.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-core",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "com.google.errorprone",
+          "module": "error_prone_annotations",
+          "version": {
+            "requires": "2.6.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "configurate-hocon-4.1.2.jar",
+          "url": "configurate-hocon-4.1.2.jar",
+          "size": 11211,
+          "sha512": "dac99d491cbef985bcdfd7197a4dc05a602be2fa07ba5d697cac2f725541cae3a76f5c52ca744c886867de9e64c96f19d99ff807e15b66cfae65621c574775e6",
+          "sha256": "c24410d1c4bf678a1e96c5e9b47cece307b37170d231a41e4a1787c42c93505f",
+          "sha1": "3953a4aef8ff62c72d34e405d6df333f3876592a",
+          "md5": "cea3d4a241941cb5cd507244f58f6989"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "com.typesafe",
+          "module": "config",
+          "version": {
+            "requires": "1.4.1"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-core",
+          "version": {
+            "requires": "4.1.2"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "configurate-hocon-4.1.2.jar",
+          "url": "configurate-hocon-4.1.2.jar",
+          "size": 11211,
+          "sha512": "dac99d491cbef985bcdfd7197a4dc05a602be2fa07ba5d697cac2f725541cae3a76f5c52ca744c886867de9e64c96f19d99ff807e15b66cfae65621c574775e6",
+          "sha256": "c24410d1c4bf678a1e96c5e9b47cece307b37170d231a41e4a1787c42c93505f",
+          "sha1": "3953a4aef8ff62c72d34e405d6df333f3876592a",
+          "md5": "cea3d4a241941cb5cd507244f58f6989"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "configurate-hocon-4.1.2-javadoc.jar",
+          "url": "configurate-hocon-4.1.2-javadoc.jar",
+          "size": 413247,
+          "sha512": "800a5e6089da1a52e0c8e8e8a79c39408cee8217d869b6760432463f595c73b5825fbd2355722cab77545ebbaf8090715f1ba9ba615f19cb772be84c0051351f",
+          "sha256": "d49b7a11bec9c7c9915de9a019a0d04e843adc7220ab9c2c7cc31403a7a63ed5",
+          "sha1": "7efb7ca0a4b2f4fd3dbb6729259fb2a2d60a9dbf",
+          "md5": "58e4c4991fbe81d8e5eaadc624cc83f1"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "configurate-hocon-4.1.2-sources.jar",
+          "url": "configurate-hocon-4.1.2-sources.jar",
+          "size": 5138,
+          "sha512": "97a53d2d933d94f87c2566c390cde42d351fc0219bd41457d5acf3f951053fedcd5ff15d9ee9e581685cb500142cc0590319f80ce91e24bf581b44ebc9807544",
+          "sha256": "56d33b4d31071385ead53f896dfc50b390588a6a06673e0b50bc46635632e721",
+          "sha1": "c66b2d9cea67e4d7d1695fa8eb1b3096d84fb780",
+          "md5": "79dd8424c4a7107823b6af0fe421913e"
+        }
+      ]
+    }
+  ]
+}

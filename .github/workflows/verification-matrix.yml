@@ -1,0 +1,53 @@
+name: STLib Verification Matrix
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        task:
+          - verificationMatrix
+          - build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Run ${{ matrix.task }}
+        run: ./gradlew --no-daemon ${{ matrix.task }}
+
+  verify-example:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Build example consumer when present
+        run: |
+          if [ -f "stlib-example-consumer/build.gradle.kts" ]; then
+            ./gradlew --no-daemon -PincludeExamples=true :stlib-example-consumer:build
+          else
+            echo "stlib-example-consumer not present, skipping."
+          fi

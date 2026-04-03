@@ -1,0 +1,6 @@
+{
+  "id": "stlib",
+  "name": "STLib",
+  "version": "${version}",
+  "main": "studio.singlethread.lib.platform.velocity.STLibVelocity"
+}

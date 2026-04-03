@@ -1,0 +1,5 @@
+name: STLib
+version: '${version}'
+main: studio.singlethread.lib.platform.bungee.STLibBungee
+author: singlethread
+description: STLib integrated framework runtime for Bungee.

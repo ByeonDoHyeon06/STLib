@@ -1,0 +1,20 @@
+name: STLib
+version: '${version}'
+main: studio.singlethread.lib.STLib
+api-version: '1.19'
+load: STARTUP
+authors:
+  - singlethread
+description: STLib integrated framework runtime.
+softdepend:
+  - PlaceholderAPI
+permissions:
+  stlib.command:
+    description: Allows using STLib diagnostic command
+    default: op
+  stlib.command.gui:
+    description: Allows opening STLib dashboard GUI
+    default: op
+  stlib.command.reload:
+    description: Allows reloading STLib runtime configuration
+    default: op

@@ -1,0 +1,140 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "net.kyori",
+    "module": "adventure-text-minimessage",
+    "version": "4.13.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.0.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "net.kyori",
+          "module": "adventure-bom",
+          "version": {
+            "requires": "4.13.1"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-api",
+          "version": {
+            "requires": "4.13.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "adventure-text-minimessage-4.13.1.jar",
+          "url": "adventure-text-minimessage-4.13.1.jar",
+          "size": 158599,
+          "sha512": "83316854a0ae0ca760a6d6ffd4d084c92a0c9ed2c6217cb1b113b0867eb8a7b963a10e6dde4c369a8c613d4d7e8a419a9c7db943c1634a126eac532c2c20a94f",
+          "sha256": "a112cb2c767ff65497f790efd38831514c2bbf3e01529cae2c3995c1edd591f5",
+          "sha1": "91469d87747c26b1da43175866e8a4c42f1cdd02",
+          "md5": "ece72bd8542288fd806b23ed03935e91"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "net.kyori",
+          "module": "adventure-bom",
+          "version": {
+            "requires": "4.13.1"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-api",
+          "version": {
+            "requires": "4.13.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "adventure-text-minimessage-4.13.1.jar",
+          "url": "adventure-text-minimessage-4.13.1.jar",
+          "size": 158599,
+          "sha512": "83316854a0ae0ca760a6d6ffd4d084c92a0c9ed2c6217cb1b113b0867eb8a7b963a10e6dde4c369a8c613d4d7e8a419a9c7db943c1634a126eac532c2c20a94f",
+          "sha256": "a112cb2c767ff65497f790efd38831514c2bbf3e01529cae2c3995c1edd591f5",
+          "sha1": "91469d87747c26b1da43175866e8a4c42f1cdd02",
+          "md5": "ece72bd8542288fd806b23ed03935e91"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "adventure-text-minimessage-4.13.1-javadoc.jar",
+          "url": "adventure-text-minimessage-4.13.1-javadoc.jar",
+          "size": 377590,
+          "sha512": "b933c115b7f68e43e57bb16831e8ec8f9709f9196649409b3f3360f9d2ca4fe8032b8839424a7a0d386f7d690b4700ce98a22a7ef7148513c819715b20f9bd6c",
+          "sha256": "e907ee51841b4ca89e500ab80397f60e8aa93444b7424d9809b1ca4f5161ee71",
+          "sha1": "c7c1e0c6daeedc0f2129b7e916ba8931d2241952",
+          "md5": "f49ee6258b3588fa63c9046dc7321b96"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "adventure-text-minimessage-4.13.1-sources.jar",
+          "url": "adventure-text-minimessage-4.13.1-sources.jar",
+          "size": 141540,
+          "sha512": "1682fdcee03e0d862ef462859e6a3879f2702c2f48ef07f54a600b7d388fbab5a0da04e406983a91a4a6cccd21483cf3b2983b1b7f94c74f2ca250c29e30b8e1",
+          "sha256": "a70cbf161517c1837bb23445c3692d5743dc79c95bc17c6b258635fb6508a43a",
+          "sha1": "762dae39d9b4bbb4823f615c71d069986b450376",
+          "md5": "8ddd703f1b898e7232d2f6f5a5980c46"
+        }
+      ]
+    }
+  ]
+}

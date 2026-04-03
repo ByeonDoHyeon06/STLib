@@ -1,0 +1,73 @@
+command:
+  stlib:
+    description: "Show STLib runtime status"
+  stlibgui:
+    description: "Open STPlugin dashboard"
+stlib:
+  lifecycle:
+    initialize: "STLib initialize phase"
+    load_complete: "STLib load phase complete"
+    enabled: "STLib enabled"
+    disabled: "STLib disabled"
+  log:
+    command_invoked: "/stlib invoked by {sender}"
+    gui_invoked: "/stlibgui invoked by {sender}"
+    reload_invoked: "/stlib reload invoked by {sender}"
+  command:
+    player_only: "<red>This command can only be used by players.</red>"
+    backend: "STLib backend: {backend}"
+    plugin_count: "Loaded STPlugin entries: {count}"
+    plugin_entry: "- {name} v{version} [{status}]"
+    reload:
+      success: "<green>Reload complete:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}"
+      failed: "<red>Reload failed:</red> {reason}"
+  gui:
+    title:
+      list: "<gold>STPlugin Dashboard</gold> <gray>({page}/{total})</gray>"
+      detail: "<gold>{name}</gold> <gray>Details</gray>"
+    plugin_name: "<yellow>{name}</yellow>"
+    status:
+      enabled: "<green>enabled</green>"
+      disabled: "<red>disabled</red>"
+      loaded: "<yellow>loaded</yellow>"
+    value:
+      none: "<gray>none</gray>"
+    lore:
+      version: "<gray>Version:</gray> <white>{version}</white>"
+      runtime_status: "<gray>Status:</gray> {status}"
+      uptime: "<gray>Uptime:</gray> <white>{uptime}</white>"
+      capability_summary: "<gray>Capabilities (on/off):</gray> <white>{summary}</white>"
+      detail_open: "<aqua>Left-click to open details</aqua>"
+    detail:
+      identity_title: "<yellow>Identity</yellow>"
+      lifecycle_title: "<yellow>Lifecycle</yellow>"
+      capability_title: "<yellow>Capability Summary</yellow>"
+      health_title: "<yellow>Health Summary</yellow>"
+      main_class: "<gray>Main class:</gray> <white>{main_class}</white>"
+      loaded_at: "<gray>Loaded at:</gray> <white>{time}</white>"
+      enabled_at: "<gray>Enabled at:</gray> <white>{time}</white>"
+      disabled_at: "<gray>Disabled at:</gray> <white>{time}</white>"
+      total_enable_count: "<gray>Total enable count:</gray> <white>{count}</white>"
+      total_disable_count: "<gray>Total disable count:</gray> <white>{count}</white>"
+      capability_updated_at: "<gray>Capability updated:</gray> <white>{time}</white>"
+      health_level: "<gray>Health level:</gray> <white>{value}</white>"
+      health_issue_count: "<gray>Issue count:</gray> <white>{count}</white>"
+      last_lifecycle_at: "<gray>Last lifecycle event:</gray> <white>{time}</white>"
+    health:
+      healthy: "<green>healthy</green>"
+      degraded: "<yellow>degraded</yellow>"
+    control:
+      previous: "<yellow>Previous Page</yellow>"
+      next: "<yellow>Next Page</yellow>"
+      refresh: "<green>Refresh</green>"
+      close: "<red>Close</red>"
+      back: "<yellow>Back</yellow>"
+      hint: "<gray>Click</gray>"
+    feedback:
+      not_found: "<red>Plugin {plugin} was not found.</red>"
+      dashboard_disabled_config: "<red>STPlugin dashboard is disabled by config/stlib.yml.</red>"
+      dashboard_unavailable: "<red>STPlugin dashboard is currently unavailable.</red>"
+      open_failed: "<red>Failed to open STPlugin dashboard. Check console.</red>"
+    empty:
+      title: "<gray>No managed plugins</gray>"
+      description: "<dark_gray>No STPlugin entries available.</dark_gray>"

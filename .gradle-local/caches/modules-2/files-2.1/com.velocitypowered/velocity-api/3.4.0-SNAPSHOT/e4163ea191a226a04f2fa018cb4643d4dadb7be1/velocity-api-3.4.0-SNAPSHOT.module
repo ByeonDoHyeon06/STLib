@@ -1,0 +1,355 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.velocitypowered",
+    "module": "velocity-api",
+    "version": "3.4.0-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "com.google.code.gson",
+          "module": "gson",
+          "version": {
+            "requires": "2.10.1"
+          }
+        },
+        {
+          "group": "com.google.guava",
+          "module": "guava",
+          "version": {
+            "requires": "25.1-jre"
+          }
+        },
+        {
+          "group": "com.moandjiezana.toml",
+          "module": "toml4j",
+          "version": {
+            "requires": "0.7.2"
+          }
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-bom",
+          "version": {
+            "requires": "4.26.1"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          }
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-api"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-gson"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-legacy"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-plain"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-minimessage"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-logger-slf4j"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-ansi"
+        },
+        {
+          "group": "org.yaml",
+          "module": "snakeyaml",
+          "version": {
+            "requires": "1.33"
+          }
+        },
+        {
+          "group": "org.slf4j",
+          "module": "slf4j-api",
+          "version": {
+            "requires": "2.0.17"
+          }
+        },
+        {
+          "group": "com.google.inject",
+          "module": "guice",
+          "version": {
+            "requires": "6.0.0"
+          }
+        },
+        {
+          "group": "org.checkerframework",
+          "module": "checker-qual",
+          "version": {
+            "requires": "3.42.0"
+          }
+        },
+        {
+          "group": "com.velocitypowered",
+          "module": "velocity-brigadier",
+          "version": {
+            "requires": "1.0.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-hocon",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-yaml",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-gson",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "com.github.ben-manes.caffeine",
+          "module": "caffeine",
+          "version": {
+            "requires": "3.1.8"
+          }
+        },
+        {
+          "group": "org.jspecify",
+          "module": "jspecify",
+          "version": {
+            "requires": "0.3.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "velocity-api-3.4.0-SNAPSHOT.jar",
+          "url": "velocity-api-3.4.0-SNAPSHOT.jar",
+          "size": 193631,
+          "sha512": "6084ae22d5aba5b6a51602cc96128c5972675c8e6557b2e642d8c8806561d4237eb4925d817aa0b9411dd8bf5d3f51cb2d1098065f464a43bd23a0ae3775838b",
+          "sha256": "4c6317e73f8194383c77313e7eb4ae27941681718680ceb77b3c092b0b6713d4",
+          "sha1": "f8b024e83389b5293b1efa55f1753de8151b79fa",
+          "md5": "43083c8a5acc9527dab642455b9266fa"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "com.google.code.gson",
+          "module": "gson",
+          "version": {
+            "requires": "2.10.1"
+          }
+        },
+        {
+          "group": "com.google.guava",
+          "module": "guava",
+          "version": {
+            "requires": "25.1-jre"
+          }
+        },
+        {
+          "group": "com.moandjiezana.toml",
+          "module": "toml4j",
+          "version": {
+            "requires": "0.7.2"
+          }
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-bom",
+          "version": {
+            "requires": "4.26.1"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          }
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-api"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-gson"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-legacy"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-plain"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-minimessage"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-logger-slf4j"
+        },
+        {
+          "group": "net.kyori",
+          "module": "adventure-text-serializer-ansi"
+        },
+        {
+          "group": "org.yaml",
+          "module": "snakeyaml",
+          "version": {
+            "requires": "1.33"
+          }
+        },
+        {
+          "group": "org.slf4j",
+          "module": "slf4j-api",
+          "version": {
+            "requires": "2.0.17"
+          }
+        },
+        {
+          "group": "com.google.inject",
+          "module": "guice",
+          "version": {
+            "requires": "6.0.0"
+          }
+        },
+        {
+          "group": "org.checkerframework",
+          "module": "checker-qual",
+          "version": {
+            "requires": "3.42.0"
+          }
+        },
+        {
+          "group": "com.velocitypowered",
+          "module": "velocity-brigadier",
+          "version": {
+            "requires": "1.0.0-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-hocon",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-yaml",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-gson",
+          "version": {
+            "requires": "4.1.2"
+          }
+        },
+        {
+          "group": "com.github.ben-manes.caffeine",
+          "module": "caffeine",
+          "version": {
+            "requires": "3.1.8"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "velocity-api-3.4.0-SNAPSHOT.jar",
+          "url": "velocity-api-3.4.0-SNAPSHOT.jar",
+          "size": 193631,
+          "sha512": "6084ae22d5aba5b6a51602cc96128c5972675c8e6557b2e642d8c8806561d4237eb4925d817aa0b9411dd8bf5d3f51cb2d1098065f464a43bd23a0ae3775838b",
+          "sha256": "4c6317e73f8194383c77313e7eb4ae27941681718680ceb77b3c092b0b6713d4",
+          "sha1": "f8b024e83389b5293b1efa55f1753de8151b79fa",
+          "md5": "43083c8a5acc9527dab642455b9266fa"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "velocity-api-3.4.0-SNAPSHOT-javadoc.jar",
+          "url": "velocity-api-3.4.0-SNAPSHOT-javadoc.jar",
+          "size": 1112723,
+          "sha512": "2af67147b1be988d18e83d788f9a9fd3a22733f176a17ae57c067953e47d9942a1937ad0fed60d94fa00a299373a75cd7e9c44f4922a69b2304a441d59d2f2e4",
+          "sha256": "131a3385bb86bf0dff7913536727b5d1079df12f9045809554963ca85deff407",
+          "sha1": "50ff2b160702bf90dafd46d5cd473bd9bd36556c",
+          "md5": "3068958a384caf1a18794dfe6f2cad96"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "velocity-api-3.4.0-SNAPSHOT-sources.jar",
+          "url": "velocity-api-3.4.0-SNAPSHOT-sources.jar",
+          "size": 148901,
+          "sha512": "15ccce95f4b3113dd7d986016af56ac4159c986e731a7b98e0652d316b14f2739d1a80815a5f163083b9233ef25f9a1d5537b4b9ac0dafe0604bc060e6697c48",
+          "sha256": "4ef9d5a842d9c9322b73e7feb79a3e9d71899f1c8a9e6066e2acb5204591f538",
+          "sha1": "ccc02d83cc4a280f947eb80ba3bc6bd733c5513c",
+          "md5": "6e74f0f57bae4e4b9fecceac80147b5f"
+        }
+      ]
+    }
+  ]
+}

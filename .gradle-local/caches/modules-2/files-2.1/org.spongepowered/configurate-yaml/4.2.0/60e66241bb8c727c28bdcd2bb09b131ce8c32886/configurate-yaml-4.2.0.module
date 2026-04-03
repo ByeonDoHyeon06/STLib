@@ -1,0 +1,161 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "org.spongepowered",
+    "module": "configurate-yaml",
+    "version": "4.2.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.12.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-core",
+          "version": {
+            "requires": "4.2.0"
+          }
+        },
+        {
+          "group": "com.google.errorprone",
+          "module": "error_prone_annotations",
+          "version": {
+            "requires": "2.36.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "configurate-yaml-4.2.0.jar",
+          "url": "configurate-yaml-4.2.0.jar",
+          "size": 379214,
+          "sha512": "0ebaf26f4b209acba249512539e8c6c3c4c57128380bf4f7cf7aa72773f14fc7e9689c2d492f23f163032bb2a38f04abcf42d8eb4b93da16063b08fec9b579a8",
+          "sha256": "6294f085316188bffb71bb05ef36bf8755a288ed925c791952e1e8d7bfc8ba4c",
+          "sha1": "a61bc2dcbce867a3909529bd02c8224cbabbe7c1",
+          "md5": "5123c2c6effaded958c8f6202acb7b59"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-core",
+          "version": {
+            "requires": "4.2.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "configurate-yaml-4.2.0.jar",
+          "url": "configurate-yaml-4.2.0.jar",
+          "size": 379214,
+          "sha512": "0ebaf26f4b209acba249512539e8c6c3c4c57128380bf4f7cf7aa72773f14fc7e9689c2d492f23f163032bb2a38f04abcf42d8eb4b93da16063b08fec9b579a8",
+          "sha256": "6294f085316188bffb71bb05ef36bf8755a288ed925c791952e1e8d7bfc8ba4c",
+          "sha1": "a61bc2dcbce867a3909529bd02c8224cbabbe7c1",
+          "md5": "5123c2c6effaded958c8f6202acb7b59"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.spongepowered",
+          "module": "configurate-core",
+          "version": {
+            "requires": "4.2.0"
+          }
+        },
+        {
+          "group": "com.google.errorprone",
+          "module": "error_prone_annotations",
+          "version": {
+            "requires": "2.36.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "configurate-yaml-4.2.0-javadoc.jar",
+          "url": "configurate-yaml-4.2.0-javadoc.jar",
+          "size": 107421,
+          "sha512": "cc798ed68d01036c4f2692bd74ccc9a06742fd50461024f19330eff21a2f12a66c4fa8a5057e31713a14fcfeadd802a3098d0b65b27af82bc4177e371dd2302e",
+          "sha256": "47d1c923cbbbbbb96f16ba0e686a8bdc1a211ed32a0f5993970fbbb00392c91b",
+          "sha1": "25c0f605f03a399ee6d316a1d4d6d6ec77ab9449",
+          "md5": "894ab7f0337f1acbb764975f62ea01f4"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "configurate-yaml-4.2.0-sources.jar",
+          "url": "configurate-yaml-4.2.0-sources.jar",
+          "size": 6477,
+          "sha512": "9fe0dfa35f5dec9bff8560d4fea36dbecb8a1b002fb0f82930ff5abcbf8d15b5cc074bcae751373de1f27cb246989dc0732af7af40dd1b2433a60045bc4624b1",
+          "sha256": "0dfe736890afd28696b94522325dbb508eb67ea46f1c18017708d5e22222be29",
+          "sha1": "970d710f1fff4aae66850e388de097f336794780",
+          "md5": "1cd166dbc8cb58d604d384701eaa10e9"
+        }
+      ]
+    },
+    {
+      "name": "shadowRuntimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "shadowed",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "configurate-yaml-4.2.0-unsigned-all.jar",
+          "url": "configurate-yaml-4.2.0-unsigned-all.jar",
+          "size": 350938,
+          "sha512": "1275080aa9721346ab3d525abf9e1cb9de118f4d5ec59aca6377a916b8401bb37682f4d12a7a2095a5413f7bc8644a725096822e36fa3d3ddbdffb58594e0941",
+          "sha256": "62bb74bea20bc32b11441a5e205ebd489ad33c3a8d688b0a0dcfe926162ffa57",
+          "sha1": "fa99f04887a2666c61ede094ddd7bed813f0cf2c",
+          "md5": "191db5db8832b3698cc793ea986f757d"
+        }
+      ]
+    }
+  ]
+}
