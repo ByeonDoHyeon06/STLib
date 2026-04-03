@@ -8,6 +8,11 @@ import org.bukkit.event.Listener
 import org.bukkit.plugin.java.JavaPlugin
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
+import studio.singlethread.lib.framework.api.bridge.BridgeChannel
+import studio.singlethread.lib.framework.api.bridge.BridgeCodec
+import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
+import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
+import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.capability.CapabilityRegistry
 import studio.singlethread.lib.framework.api.command.CommandDefinition
 import studio.singlethread.lib.framework.api.command.CommandDslBuilder
@@ -18,17 +23,22 @@ import studio.singlethread.lib.framework.api.config.ConfigMigrationPlan
 import studio.singlethread.lib.framework.api.config.ConfigRegistry
 import studio.singlethread.lib.framework.api.config.ConfigService
 import studio.singlethread.lib.framework.api.config.VersionedConfig
+import studio.singlethread.lib.framework.api.di.ComponentScanSummary
 import studio.singlethread.lib.framework.api.event.EventRegistrar
 import studio.singlethread.lib.framework.api.kernel.STKernel
 import studio.singlethread.lib.framework.api.lifecycle.STLifecycle
 import studio.singlethread.lib.framework.api.notifier.NotifierService
 import studio.singlethread.lib.framework.api.scheduler.ScheduledTask
 import studio.singlethread.lib.framework.api.scheduler.SchedulerService
+import studio.singlethread.lib.framework.api.scheduler.ChainedScheduledTask
+import studio.singlethread.lib.framework.api.scheduler.DelaySchedule
+import studio.singlethread.lib.framework.api.scheduler.RepeatSchedule
 import studio.singlethread.lib.framework.api.text.TextService
 import studio.singlethread.lib.framework.api.translation.TranslationService
 import studio.singlethread.lib.framework.api.kernel.requireService
 import studio.singlethread.lib.framework.api.kernel.service
 import studio.singlethread.lib.framework.bukkit.bootstrap.BukkitKernelBootstrapper
+import studio.singlethread.lib.framework.bukkit.bridge.BridgeRuntimeInfo
 import studio.singlethread.lib.framework.bukkit.command.BukkitCommandRegistrar
 import studio.singlethread.lib.framework.bukkit.command.CommandApiLifecycle
 import studio.singlethread.lib.framework.bukkit.config.BukkitConfigRegistry
@@ -64,7 +74,10 @@ import studio.singlethread.lib.storage.api.Storage
 import studio.singlethread.lib.storage.api.StorageApi
 import java.nio.file.Path
 import java.time.Instant
+import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import kotlin.reflect.KProperty
 
 @Suppress("DEPRECATION")
@@ -79,6 +92,7 @@ abstract class STPlugin(
     @Volatile
     private var debugLoggingEnabled = false
     private var inventoryUiBootstrap: BukkitInventoryUiService? = null
+    private var diScanSummary: ComponentScanSummary? = null
     private val bridgeSubscriptions = CopyOnWriteArrayList<BridgeSubscription>()
     private val componentResolver: ReflectiveComponentResolver by lazy(LazyThreadSafetyMode.NONE) {
         ReflectiveComponentResolver(owner = this, kernel = kernel)
@@ -309,6 +323,70 @@ abstract class STPlugin(
         return scheduler.runTimer(delayTicks, periodTicks, task)
     }
 
+    protected fun later(
+        delay: Long,
+        unit: TimeUnit,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runDelayed(DelaySchedule.sync(delay, unit), task)
+    }
+
+    protected fun later(
+        delay: Duration,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runDelayed(DelaySchedule.sync(delay), task)
+    }
+
+    protected fun asyncLater(
+        delay: Long,
+        unit: TimeUnit,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runDelayed(DelaySchedule.async(delay, unit), task)
+    }
+
+    protected fun asyncLater(
+        delay: Duration,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runDelayed(DelaySchedule.async(delay), task)
+    }
+
+    protected fun timer(
+        delay: Long,
+        period: Long,
+        unit: TimeUnit,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runRepeating(RepeatSchedule.sync(delay, period, unit), task)
+    }
+
+    protected fun timer(
+        delay: Duration,
+        period: Duration,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runRepeating(RepeatSchedule.sync(delay, period), task)
+    }
+
+    protected fun asyncTimer(
+        delay: Long,
+        period: Long,
+        unit: TimeUnit,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runRepeating(RepeatSchedule.async(delay, period, unit), task)
+    }
+
+    protected fun asyncTimer(
+        delay: Duration,
+        period: Duration,
+        task: Runnable,
+    ): ChainedScheduledTask {
+        return scheduler.runRepeating(RepeatSchedule.async(delay, period), task)
+    }
+
     protected fun <T : Any> registerConfig(fileName: String, type: Class<T>): T {
         return configRegistry.register(fileName, type)
     }
@@ -344,11 +422,37 @@ abstract class STPlugin(
         return configRegistry.reloadAll()
     }
 
+    protected fun bridgeNodeId(): BridgeNodeId {
+        return bridge.nodeId()
+    }
+
+    protected fun bridgeChannel(
+        namespace: String,
+        key: String,
+    ): BridgeChannel {
+        return BridgeChannel.of(namespace, key)
+    }
+
     protected fun publish(
         channel: String,
         payload: String,
     ) {
         bridge.publish(channel, payload)
+    }
+
+    protected fun publish(
+        channel: BridgeChannel,
+        payload: String,
+    ) {
+        bridge.publish(channel, payload)
+    }
+
+    protected fun <T : Any> publish(
+        channel: BridgeChannel,
+        payload: T,
+        codec: BridgeCodec<T>,
+    ) {
+        bridge.publish(channel, payload, codec)
     }
 
     protected fun subscribe(
@@ -360,6 +464,79 @@ abstract class STPlugin(
         }
         bridgeSubscriptions += subscription
         return subscription
+    }
+
+    protected fun subscribe(
+        channel: BridgeChannel,
+        listener: (channel: String, payload: String) -> Unit,
+    ): BridgeSubscription {
+        val subscription = bridge.subscribe(channel) { incomingChannel, payload ->
+            listener(incomingChannel, payload)
+        }
+        bridgeSubscriptions += subscription
+        return subscription
+    }
+
+    protected fun <T : Any> subscribe(
+        channel: BridgeChannel,
+        codec: BridgeCodec<T>,
+        listener: (message: T) -> Unit,
+    ): BridgeSubscription {
+        val subscription = bridge.subscribe(channel, codec) { message ->
+            listener(message.payload)
+        }
+        bridgeSubscriptions += subscription
+        return subscription
+    }
+
+    protected fun <Req : Any, Res : Any> respond(
+        channel: BridgeChannel,
+        requestCodec: BridgeCodec<Req>,
+        responseCodec: BridgeCodec<Res>,
+        handler: BridgeRequestHandler<Req, Res>,
+    ): BridgeSubscription {
+        val subscription = bridge.respond(channel, requestCodec, responseCodec, handler)
+        bridgeSubscriptions += subscription
+        return subscription
+    }
+
+    protected fun <Req : Any, Res : Any> request(
+        channel: BridgeChannel,
+        payload: Req,
+        requestCodec: BridgeCodec<Req>,
+        responseCodec: BridgeCodec<Res>,
+        targetNode: BridgeNodeId? = null,
+    ): CompletableFuture<BridgeResponse<Res>> {
+        val timeout =
+            kernel.service(BridgeRuntimeInfo::class)
+                ?.requestTimeoutMillis
+                ?: BridgeService.DEFAULT_TIMEOUT_MILLIS
+        return request(
+            channel = channel,
+            payload = payload,
+            requestCodec = requestCodec,
+            responseCodec = responseCodec,
+            timeoutMillis = timeout,
+            targetNode = targetNode,
+        )
+    }
+
+    protected fun <Req : Any, Res : Any> request(
+        channel: BridgeChannel,
+        payload: Req,
+        requestCodec: BridgeCodec<Req>,
+        responseCodec: BridgeCodec<Res>,
+        timeoutMillis: Long,
+        targetNode: BridgeNodeId? = null,
+    ): CompletableFuture<BridgeResponse<Res>> {
+        return bridge.request(
+            channel = channel,
+            payload = payload,
+            requestCodec = requestCodec,
+            responseCodec = responseCodec,
+            timeoutMillis = timeoutMillis,
+            targetNode = targetNode,
+        )
     }
 
     protected fun unsubscribe(subscription: BridgeSubscription) {
@@ -526,6 +703,10 @@ abstract class STPlugin(
         return STPlugins.all()
     }
 
+    protected fun diComponentSummary(): ComponentScanSummary? {
+        return diScanSummary
+    }
+
     protected fun findPlugin(pluginName: String): STPluginSnapshot? {
         return STPlugins.find(pluginName)
     }
@@ -642,6 +823,10 @@ abstract class STPlugin(
             logger.severe("Skipping plugin initialize/load because kernel bootstrap failed")
             return false
         }
+        if (!bootstrapComponentGraph()) {
+            logger.severe("Skipping plugin initialize/load because DI component scan failed")
+            return false
+        }
         refreshRuntimeLoggingSwitches()
         syncCapabilitySummary()
         return true
@@ -673,6 +858,35 @@ abstract class STPlugin(
                 logger.severe("STPlugin kernel bootstrap failed: ${error.message}")
             }.isSuccess
         return kernelBootstrapped
+    }
+
+    private fun bootstrapComponentGraph(): Boolean {
+        val packageRoot = javaClass.packageName.orEmpty().trim()
+        if (packageRoot.isBlank()) {
+            capabilityRegistry.disable(CapabilityNames.RUNTIME_DI, "Plugin package root is blank")
+            logger.warning("Skipping DI component scan because plugin package root is blank")
+            return true
+        }
+
+        return runCatching {
+            val summary = componentResolver.scan(packageRoot)
+            diScanSummary = summary
+            capabilityRegistry.enable(CapabilityNames.RUNTIME_DI)
+            if (summary.discovered > 0) {
+                logger.info(
+                    "DI scan completed: package=$packageRoot, discovered=${summary.discovered}, " +
+                        "validated=${summary.validated}, singletons=${summary.singletonComponents}, " +
+                        "prototypes=${summary.prototypeComponents}",
+                )
+            }
+        }.onFailure { error ->
+            diScanSummary = null
+            capabilityRegistry.disable(
+                CapabilityNames.RUNTIME_DI,
+                "Component scan failed: ${error.message ?: "unknown"}",
+            )
+            logger.severe("DI component scan failed: ${error.message}")
+        }.isSuccess
     }
 
     protected open fun registerDefaultServices() {

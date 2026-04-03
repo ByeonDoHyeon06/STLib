@@ -18,6 +18,7 @@ dependencies {
 
     implementation("dev.jorel:commandapi-bukkit-shade:10.1.0")
     implementation("org.spongepowered:configurate-yaml:4.2.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     compileOnly("me.clip:placeholderapi:2.11.6")
     compileOnly("io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT")
     testImplementation("io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT")

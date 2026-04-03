@@ -4,4 +4,5 @@ data class PluginFileConfig(
     val plugin: PluginSettingsFile,
     val storage: StorageFileSettings,
     val dependencies: DependFileSettings,
+    val bridge: BridgeFileSettings,
 )

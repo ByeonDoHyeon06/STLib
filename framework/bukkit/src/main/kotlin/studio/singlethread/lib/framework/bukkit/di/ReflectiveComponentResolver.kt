@@ -1,5 +1,7 @@
 package studio.singlethread.lib.framework.bukkit.di
 
+import studio.singlethread.lib.framework.api.di.ComponentContainer
+import studio.singlethread.lib.framework.api.di.ComponentScanSummary
 import studio.singlethread.lib.framework.api.di.STComponent
 import studio.singlethread.lib.framework.api.di.STInject
 import studio.singlethread.lib.framework.api.di.STScope
@@ -7,17 +9,67 @@ import studio.singlethread.lib.framework.api.kernel.STKernel
 import java.lang.reflect.Constructor
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
+import java.nio.file.Files
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
+import java.util.jar.JarFile
 
 internal class ReflectiveComponentResolver(
     private val owner: Any,
     private val kernel: STKernel,
-) {
+) : ComponentContainer {
     private val singletonInstances = ConcurrentHashMap<Class<*>, Any>()
 
-    fun <T : Any> resolve(type: Class<T>): T {
+    override fun <T : Any> resolve(type: Class<T>): T {
         return resolve(type = type, stack = ArrayDeque())
+    }
+
+    override fun scan(packageRoot: String): ComponentScanSummary {
+        val normalizedRoot = packageRoot.trim().removeSuffix(".")
+        require(normalizedRoot.isNotBlank()) { "packageRoot must not be blank" }
+
+        val discovered = discoverComponentTypes(normalizedRoot)
+        if (discovered.isEmpty()) {
+            return ComponentScanSummary(
+                packageRoot = normalizedRoot,
+                discovered = 0,
+                validated = 0,
+                singletonComponents = 0,
+                prototypeComponents = 0,
+            )
+        }
+
+        val singletonCount = discovered.count { scopeOf(it) == STScope.SINGLETON }
+        val prototypeCount = discovered.size - singletonCount
+
+        val failures = mutableListOf<String>()
+        var validated = 0
+
+        discovered.forEach { componentType ->
+            @Suppress("UNCHECKED_CAST")
+            val typed = componentType as Class<Any>
+            runCatching {
+                resolve(typed)
+            }.onSuccess {
+                validated += 1
+            }.onFailure { error ->
+                failures += "${componentType.name}: ${error.message ?: "unknown"}"
+            }
+        }
+
+        if (failures.isNotEmpty()) {
+            throw IllegalStateException(
+                "DI component graph validation failed for '$normalizedRoot': ${failures.joinToString(" | ")}",
+            )
+        }
+
+        return ComponentScanSummary(
+            packageRoot = normalizedRoot,
+            discovered = discovered.size,
+            validated = validated,
+            singletonComponents = singletonCount,
+            prototypeComponents = prototypeCount,
+        )
     }
 
     private fun <T : Any> resolve(
@@ -153,5 +205,79 @@ internal class ReflectiveComponentResolver(
 
     private fun scopeOf(type: Class<*>): STScope {
         return type.getAnnotation(STComponent::class.java)?.scope ?: STScope.PROTOTYPE
+    }
+
+    private fun discoverComponentTypes(packageRoot: String): List<Class<*>> {
+        val classLoader = owner.javaClass.classLoader
+        val packagePath = packageRoot.replace('.', '/')
+
+        val codeSourceUri = owner.javaClass.protectionDomain?.codeSource?.location?.toURI() ?: return emptyList()
+        val codeSourcePath = runCatching { java.nio.file.Paths.get(codeSourceUri) }.getOrNull() ?: return emptyList()
+
+        val classNames =
+            when {
+                Files.isDirectory(codeSourcePath) -> discoverFromDirectory(codeSourcePath, packageRoot, packagePath)
+                Files.isRegularFile(codeSourcePath) -> discoverFromJar(codeSourcePath, packagePath)
+                else -> emptyList()
+            }
+
+        return classNames
+            .mapNotNull { className ->
+                runCatching {
+                    Class.forName(className, false, classLoader)
+                }.getOrNull()
+            }.filter { type ->
+                !type.isInterface &&
+                    !type.isAnnotation &&
+                    !type.isEnum &&
+                    !type.isSynthetic &&
+                    type.isAnnotationPresent(STComponent::class.java)
+            }.distinctBy(Class<*>::getName)
+            .sortedBy(Class<*>::getName)
+    }
+
+    private fun discoverFromDirectory(
+        root: java.nio.file.Path,
+        packageRoot: String,
+        packagePath: String,
+    ): List<String> {
+        val targetRoot = root.resolve(packagePath)
+        if (!Files.exists(targetRoot)) {
+            return emptyList()
+        }
+
+        Files.walk(targetRoot).use { stream ->
+            return stream
+                .filter(Files::isRegularFile)
+                .map { path ->
+                    targetRoot.relativize(path).toString()
+                }.filter { relative ->
+                    relative.endsWith(".class") && !relative.contains("module-info")
+                }.map { relative ->
+                    relative.removeSuffix(".class").replace('/', '.').replace('\\', '.')
+                }.map { suffix ->
+                    "$packageRoot.$suffix"
+                }.toList()
+        }
+    }
+
+    private fun discoverFromJar(
+        jarPath: java.nio.file.Path,
+        packagePath: String,
+    ): List<String> {
+        if (!jarPath.fileName.toString().endsWith(".jar")) {
+            return emptyList()
+        }
+
+        JarFile(jarPath.toFile()).use { jar ->
+            return jar.entries().asSequence()
+                .filter { entry -> !entry.isDirectory }
+                .map { entry -> entry.name }
+                .filter { name -> name.startsWith(packagePath) }
+                .filter { name -> name.endsWith(".class") }
+                .filterNot { name -> name.contains("module-info") }
+                .map { name -> name.removeSuffix(".class").replace('/', '.') }
+                .toList()
+        }
     }
 }

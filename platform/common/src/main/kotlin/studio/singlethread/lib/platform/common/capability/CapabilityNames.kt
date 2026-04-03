@@ -12,8 +12,12 @@ object CapabilityNames {
     const val TEXT_NOTIFIER = "text:notifier"
     const val TEXT_PLACEHOLDERAPI = "text:placeholderapi"
     const val RUNTIME_SCHEDULER = "runtime:scheduler"
+    const val RUNTIME_DI = "runtime:di"
     const val BRIDGE_LOCAL = "bridge:local"
     const val BRIDGE_DISTRIBUTED = "bridge:distributed"
+    const val BRIDGE_RPC = "bridge:rpc"
+    const val BRIDGE_CODEC = "bridge:codec"
+    const val BRIDGE_REDIS = "bridge:redis"
     const val UI_INVENTORY = "ui:inventory"
 
     const val STORAGE_JSON = "storage:json"

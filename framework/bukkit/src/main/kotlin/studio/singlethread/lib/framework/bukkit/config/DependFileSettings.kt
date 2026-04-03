@@ -11,6 +11,7 @@ class DependFileSettings {
 @ConfigSerializable
 class RuntimeDependencySettings {
     var loadDatabaseDrivers: Boolean = true
+    var loadRedisBridge: Boolean = true
 }
 
 @ConfigSerializable

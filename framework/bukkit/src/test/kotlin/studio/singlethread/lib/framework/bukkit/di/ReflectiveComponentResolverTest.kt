@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import studio.singlethread.lib.framework.api.di.STComponent
 import studio.singlethread.lib.framework.api.di.STInject
@@ -85,6 +86,30 @@ class ReflectiveComponentResolverTest {
         }
     }
 
+    @Test
+    fun `scan should discover and validate components from package root`() {
+        val resolver = resolver(owner = TestOwner())
+
+        val summary = resolver.scan("studio.singlethread.lib.framework.bukkit.di.scanok")
+
+        assertEquals(2, summary.discovered)
+        assertEquals(2, summary.validated)
+        assertEquals(1, summary.singletonComponents)
+        assertEquals(1, summary.prototypeComponents)
+    }
+
+    @Test
+    fun `scan should fail fast when component graph is invalid`() {
+        val resolver = resolver(owner = TestOwner())
+
+        val error =
+            assertThrows(IllegalStateException::class.java) {
+                resolver.scan("studio.singlethread.lib.framework.bukkit.di.scanfail")
+            }
+
+        assertTrue(error.message?.contains("scanfail") == true)
+    }
+
     private fun resolver(owner: TestOwner): ReflectiveComponentResolver {
         return ReflectiveComponentResolver(owner = owner, kernel = DefaultSTKernel())
     }
@@ -139,4 +164,3 @@ class ReflectiveComponentResolverTest {
         val a: CircularA,
     )
 }
-
