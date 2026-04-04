@@ -30,7 +30,7 @@ import studio.singlethread.lib.framework.bukkit.config.PluginFileConfig
 import studio.singlethread.lib.framework.bukkit.config.PluginFileConfigLoader
 import studio.singlethread.lib.framework.bukkit.config.StorageBackendType
 import studio.singlethread.lib.framework.bukkit.config.StorageProfileSelector
-import studio.singlethread.lib.framework.bukkit.inventory.InventoryUiService
+import studio.singlethread.lib.framework.bukkit.gui.StGuiService
 import studio.singlethread.lib.framework.bukkit.notifier.BukkitNotifierService
 import studio.singlethread.lib.framework.bukkit.resource.BukkitResourceIntegrationRuntime
 import studio.singlethread.lib.framework.bukkit.resource.ResourceCapabilityBinding
@@ -138,7 +138,7 @@ object BukkitKernelBootstrapper {
     fun shutdown(kernel: STKernel) {
         kernel.service(StorageApi::class)?.close()
         kernel.service(BridgeService::class)?.close()
-        kernel.service(InventoryUiService::class)?.close()
+        kernel.service(StGuiService::class)?.close()
     }
 
     private fun markPlatformCapabilities(capabilities: CapabilityRegistry) {

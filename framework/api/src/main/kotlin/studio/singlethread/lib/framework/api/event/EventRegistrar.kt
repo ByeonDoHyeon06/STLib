@@ -1,9 +1,9 @@
 package studio.singlethread.lib.framework.api.event
 
-interface EventRegistrar {
-    fun listen(listener: Any)
+interface EventRegistrar<in L : Any> {
+    fun listen(listener: L)
 
-    fun unlisten(listener: Any)
+    fun unlisten(listener: L)
 
     fun unlistenAll()
 }

@@ -187,8 +187,12 @@ internal class JsonStorage(
 
         return runCatching {
             json.decodeFromString<FileState>(content)
-        }.getOrElse {
-            FileState()
+        }.getOrElse { error ->
+            throw StorageSerializationException(
+                "Failed to parse JSON storage file '$storageFile'. " +
+                    "Refusing to continue with empty state to avoid silent data loss.",
+                error,
+            )
         }
     }
 

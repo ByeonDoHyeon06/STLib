@@ -137,6 +137,74 @@ command("warp") {
 }
 ```
 
+## GUI DSL (Unified)
+
+STLib GUI는 `gui { ... }`로 만들고 `player.openInventory(gui)`로 엽니다.
+
+```kotlin
+val basic = gui(rows = 1, title = "<gold>Basic</gold>") {
+    set(4, ItemStack(Material.APPLE)) { click ->
+        click.event.isCancelled = true
+        click.player.sendMessage("apple")
+    }
+}
+player.openInventory(basic)
+```
+
+```kotlin
+import org.bukkit.event.inventory.InventoryType
+
+val complex = gui(rows = 3, title = "<gray>Complex</gray>") {
+    pattern(
+        "#########",
+        "#   S   #",
+        "#########",
+    )
+    set('#', ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)) { it.event.isCancelled = true }
+    set('S', ItemStack(Material.PLAYER_HEAD)) { it.event.isCancelled = true }
+}
+player.openInventory(complex)
+
+val dropper = gui(title = mini("<gray>Dropper</gray>"), size = 9, type = InventoryType.DROPPER) {
+    set(listOf(1, 3, 4, 5, 7), ItemStack(Material.GRAY_STAINED_GLASS_PANE))
+    onClick { it.event.isCancelled = true }
+}
+player.openInventory(dropper)
+```
+
+```kotlin
+val routed = gui(rows = 6, title = "<gold>Plugins</gold>") {
+    state("view", "list")
+    pattern(
+        "#########",
+        "#       #",
+        "#       #",
+        "#       #",
+        "#       #",
+        "#########",
+    )
+    set('#', ItemStack(Material.GRAY_STAINED_GLASS_PANE))
+
+    page(stateKey = "view", stateValue = "list") {
+        set(10, ItemStack(Material.PAPER))
+        set(11, ItemStack(Material.PAPER))
+        set(49, ItemStack(Material.BOOK)) { click ->
+            click.state("view", "detail")
+            click.refresh()
+        }
+    }
+
+    page(stateKey = "view", stateValue = "detail") {
+        set(22, ItemStack(Material.BOOK))
+        set(49, ItemStack(Material.ARROW)) { click ->
+            click.state("view", "list")
+            click.refresh()
+        }
+    }
+}
+player.openInventory(routed)
+```
+
 ## Event 사용
 
 ### 1) STListener(플러그인 주입형) 등록/해제
@@ -155,7 +223,7 @@ class JoinListener(plugin: ExamplePlugin) : STListener<ExamplePlugin>(plugin) {
 
 override fun enable() {
     listen<JoinListener>() // reflection + constructor DI
-    // or: listen(JoinListener(this))
+    // or: listen(JoinListener(this))  // org.bukkit.event.Listener only (type-safe)
 }
 ```
 
@@ -281,6 +349,11 @@ override fun enable() {
         debug("received: $payload")
     }
 
+    // source-aware typed subscribe (BridgeService direct)
+    bridge.subscribe(channel, stringCodec) { incoming ->
+        debug("from=${incoming.sourceNode.value}, payload=${incoming.payload}")
+    }
+
     // typed publish
     publish(channel, "hello-bridge", stringCodec)
 
@@ -325,6 +398,10 @@ override fun enable() {
     }
 }
 ```
+
+메모:
+- `STPlugin`은 notifier pass-through(`tell`, `announce`, `actionBar`, `title`, `send`, `console`)를 제공하지 않습니다.
+- 메시징은 `notifier` 서비스(`send`, `sendPrefixed`, `actionBar`, `title`)를 직접 사용합니다.
 
 ## Storage
 

@@ -14,7 +14,9 @@ import studio.singlethread.lib.dashboard.StlibDashboardService
 import studio.singlethread.lib.dashboard.StlibStorageCapabilityPolicy
 import studio.singlethread.lib.dashboard.StlibStatsStore
 import studio.singlethread.lib.framework.api.kernel.service
+import studio.singlethread.lib.framework.api.command.CommandTree
 import studio.singlethread.lib.framework.bukkit.bridge.BridgeRuntimeInfo
+import studio.singlethread.lib.framework.bukkit.gui.openInventory
 import studio.singlethread.lib.framework.bukkit.lifecycle.STPlugin
 import studio.singlethread.lib.health.StlibHealthSnapshotAssembler
 import studio.singlethread.lib.ui.StlibDashboardMenuItemFactory
@@ -72,12 +74,20 @@ class STLib : STPlugin() {
     }
     private val dashboardNavigator by lazy {
         StlibDashboardNavigator(
-            ui = ui,
+            createGui = { rows, title, placeholders, definition ->
+                gui(
+                    rows = rows,
+                    title = title,
+                    placeholders = placeholders,
+                    definition = definition,
+                )
+            },
+            openGui = { player, gui -> player.openInventory(gui) },
             dashboardService = dashboardService,
             menuItemFactory = menuItemFactory,
             translate = ::translated,
             formatInstant = ::formatInstant,
-            notifyPlayer = { player, message -> announce(player, message) },
+            notifyPlayer = { player, message -> notifier.sendPrefixed(player, message) },
         )
     }
     private val healthSnapshotProvider by lazy {
@@ -135,29 +145,33 @@ class STLib : STPlugin() {
     }
 
     override fun enable() {
-        command("stlib") {
-            permission = "stlib.command"
-            description = translation.translate("command.stlib.description")
-            literal("reload") {
-                permission = "stlib.command.reload"
+        command("stlib", CommandTree { root ->
+            with(root) {
+                permission = "stlib.command"
+                description = translation.translate("command.stlib.description")
+                literal("reload") {
+                    permission = "stlib.command.reload"
+                    executes { context ->
+                        reloadCommand.execute(context)
+                    }
+                }
                 executes { context ->
-                    reloadCommand.execute(context)
+                    statusCommand.execute(context, runtimeSnapshotAssembler.snapshot())
                 }
             }
-            executes { context ->
-                statusCommand.execute(context, runtimeSnapshotAssembler.snapshot())
+        })
+        command("stlibgui", CommandTree { root ->
+            with(root) {
+                permission = "stlib.command.gui"
+                description = translation.translate("command.stlibgui.description")
+                executes { context ->
+                    openGuiCommand.execute(
+                        context = context,
+                        player = context.audience as? Player,
+                    )
+                }
             }
-        }
-        command("stlibgui") {
-            permission = "stlib.command.gui"
-            description = translation.translate("command.stlibgui.description")
-            executes { context ->
-                openGuiCommand.execute(
-                    context = context,
-                    player = context.audience as? Player,
-                )
-            }
-        }
+        })
 
         dashboardRuntimeController.start()
         lifecycleLogger.enabled()

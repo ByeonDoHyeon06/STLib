@@ -10,6 +10,7 @@ import studio.singlethread.lib.framework.api.di.STComponent
 import studio.singlethread.lib.framework.api.di.STInject
 import studio.singlethread.lib.framework.api.di.STScope
 import studio.singlethread.lib.framework.core.kernel.DefaultSTKernel
+import studio.singlethread.lib.framework.bukkit.di.scanok.ScanPrototype
 
 class ReflectiveComponentResolverTest {
     @Test
@@ -89,6 +90,7 @@ class ReflectiveComponentResolverTest {
     @Test
     fun `scan should discover and validate components from package root`() {
         val resolver = resolver(owner = TestOwner())
+        ScanPrototype.resetCounter()
 
         val summary = resolver.scan("studio.singlethread.lib.framework.bukkit.di.scanok")
 
@@ -96,6 +98,10 @@ class ReflectiveComponentResolverTest {
         assertEquals(2, summary.validated)
         assertEquals(1, summary.singletonComponents)
         assertEquals(1, summary.prototypeComponents)
+        assertEquals(0, ScanPrototype.createdCount, "prototype component should not be instantiated during scan")
+
+        resolver.resolve(ScanPrototype::class.java)
+        assertEquals(1, ScanPrototype.createdCount, "prototype should be instantiated on resolve")
     }
 
     @Test

@@ -116,6 +116,15 @@ gradle-app.setting
 run/
 runs/
 
+# Local test workspaces (root-level only)
+/test/
+/tests/
+/testdata/
+/test-data/
+/test-server/
+/test-workspace/
+/sandbox/
+
 .agents/skills/solid
 skills-lock.json
 .github

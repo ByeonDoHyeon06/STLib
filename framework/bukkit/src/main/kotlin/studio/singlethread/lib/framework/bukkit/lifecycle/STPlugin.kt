@@ -1,23 +1,25 @@
 package studio.singlethread.lib.framework.bukkit.lifecycle
 
-import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.Component
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import org.bukkit.event.Listener
+import org.bukkit.event.inventory.InventoryType
 import org.bukkit.plugin.java.JavaPlugin
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
+import studio.singlethread.lib.framework.api.bridge.BridgeListener
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
+import studio.singlethread.lib.framework.api.bridge.BridgePayloadListener
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
 import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.capability.CapabilityRegistry
 import studio.singlethread.lib.framework.api.command.CommandDefinition
-import studio.singlethread.lib.framework.api.command.CommandDslBuilder
 import studio.singlethread.lib.framework.api.command.CommandRegistrar
 import studio.singlethread.lib.framework.api.command.STCommand
+import studio.singlethread.lib.framework.api.command.CommandTree
 import studio.singlethread.lib.framework.api.command.commandDsl
 import studio.singlethread.lib.framework.api.config.ConfigMigrationPlan
 import studio.singlethread.lib.framework.api.config.ConfigRegistry
@@ -48,11 +50,10 @@ import studio.singlethread.lib.framework.bukkit.event.BukkitEventCaller
 import studio.singlethread.lib.framework.bukkit.event.BukkitEventRegistrar
 import studio.singlethread.lib.framework.bukkit.event.STEvent
 import studio.singlethread.lib.framework.bukkit.event.STListener
-import studio.singlethread.lib.framework.bukkit.inventory.BukkitInventoryUiService
-import studio.singlethread.lib.framework.bukkit.inventory.InventoryUiService
-import studio.singlethread.lib.framework.bukkit.inventory.StMenu
-import studio.singlethread.lib.framework.bukkit.inventory.StMenuBuilder
-import studio.singlethread.lib.framework.bukkit.lifecycle.toolkit.InventoryUiToolkit
+import studio.singlethread.lib.framework.bukkit.gui.BukkitGuiService
+import studio.singlethread.lib.framework.bukkit.gui.StGui
+import studio.singlethread.lib.framework.bukkit.gui.StGuiDefinition
+import studio.singlethread.lib.framework.bukkit.gui.StGuiService
 import studio.singlethread.lib.framework.bukkit.management.STPluginDescriptor
 import studio.singlethread.lib.framework.bukkit.management.STPluginSnapshot
 import studio.singlethread.lib.framework.bukkit.management.STPlugins
@@ -91,7 +92,7 @@ abstract class STPlugin(
     private var compatibilitySupported = true
     @Volatile
     private var debugLoggingEnabled = false
-    private var inventoryUiBootstrap: BukkitInventoryUiService? = null
+    private var guiBootstrap: BukkitGuiService? = null
     private var diScanSummary: ComponentScanSummary? = null
     private val bridgeSubscriptions = CopyOnWriteArrayList<BridgeSubscription>()
     private val componentResolver: ReflectiveComponentResolver by lazy(LazyThreadSafetyMode.NONE) {
@@ -111,7 +112,7 @@ abstract class STPlugin(
 
     protected val commandRegistrar: CommandRegistrar by required { kernel.requireService() }
 
-    protected val eventRegistrar: EventRegistrar by required { kernel.requireService() }
+    protected val eventRegistrar: EventRegistrar<Listener> by required { kernel.requireService() }
 
     protected val configService: ConfigService by required { kernel.requireService() }
 
@@ -123,23 +124,13 @@ abstract class STPlugin(
 
     protected val bridge: BridgeService by required { kernel.requireService() }
 
-    protected val inventoryUi: InventoryUiService by required { kernel.requireService() }
+    protected val guiService: StGuiService by required { kernel.requireService() }
 
     protected val resource: ResourceService by required { kernel.requireService() }
 
     protected val pluginConfig: PluginFileConfig by required { kernel.requireService() }
 
     private val bukkitTextParser: BukkitTextParser by required { kernel.requireService() }
-
-    /**
-     * UI operations are grouped to keep STPlugin focused on lifecycle concerns.
-     */
-    protected val ui: InventoryUiToolkit by lazy(LazyThreadSafetyMode.NONE) {
-        InventoryUiToolkit(
-            inventoryUiService = inventoryUi,
-            parseTitle = ::mini,
-        )
-    }
 
     /**
      * Default compatibility policy follows STLib baseline support window.
@@ -207,6 +198,70 @@ abstract class STPlugin(
         return bukkitTextParser.parse(sender, message, placeholders, usePlaceholderApi)
     }
 
+    protected fun gui(
+        rows: Int,
+        title: String,
+        placeholders: Map<String, String> = emptyMap(),
+        definition: StGuiDefinition,
+    ): StGui {
+        return guiService.create(
+            rows = rows,
+            title = mini(title, placeholders),
+            definition = definition,
+        )
+    }
+
+    protected fun gui(
+        rows: Int,
+        title: Component,
+        definition: StGuiDefinition,
+    ): StGui {
+        return guiService.create(
+            rows = rows,
+            title = title,
+            definition = definition,
+        )
+    }
+
+    protected fun gui(
+        definition: StGuiDefinition,
+    ): StGui {
+        return gui(
+            rows = 6,
+            title = Component.empty(),
+            definition = definition,
+        )
+    }
+
+    protected fun gui(
+        title: String,
+        size: Int,
+        type: InventoryType,
+        placeholders: Map<String, String> = emptyMap(),
+        definition: StGuiDefinition,
+    ): StGui {
+        return guiService.create(
+            size = size,
+            title = mini(title, placeholders),
+            type = type,
+            definition = definition,
+        )
+    }
+
+    protected fun gui(
+        title: Component,
+        size: Int,
+        type: InventoryType,
+        definition: StGuiDefinition,
+    ): StGui {
+        return guiService.create(
+            size = size,
+            title = title,
+            type = type,
+            definition = definition,
+        )
+    }
+
     protected fun translate(
         key: String,
         placeholders: Map<String, String> = emptyMap(),
@@ -234,53 +289,6 @@ abstract class STPlugin(
         translationFacade().reloadTranslations()
     }
 
-    protected fun tell(
-        target: Audience,
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        notifier.send(target, message, placeholders)
-    }
-
-    protected fun announce(
-        target: Audience,
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        notifier.sendPrefixed(target, message, placeholders)
-    }
-
-    protected fun tellTranslated(
-        target: Audience,
-        key: String,
-        placeholders: Map<String, String> = emptyMap(),
-        prefixed: Boolean = false,
-    ) {
-        val translated = translation.translate(key, null, placeholders)
-        if (prefixed) {
-            notifier.sendPrefixed(target, translated)
-            return
-        }
-        notifier.send(target, translated)
-    }
-
-    protected fun actionBar(
-        target: Audience,
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        notifier.actionBar(target, message, placeholders)
-    }
-
-    protected fun title(
-        target: Audience,
-        title: String,
-        subtitle: String = "",
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        notifier.title(target, title, subtitle, placeholders)
-    }
-
     protected fun broadcast(
         message: String,
         placeholders: Map<String, String> = emptyMap(),
@@ -298,6 +306,21 @@ abstract class STPlugin(
     ) {
         val translated = translation.translate(key = key, placeholders = placeholders)
         broadcast(message = translated, prefixed = prefixed)
+    }
+
+    protected fun console(
+        message: String,
+        placeholders: Map<String, String> = emptyMap(),
+    ) {
+        server.consoleSender.sendMessage(mini(message, placeholders))
+    }
+
+    protected fun send(
+        sender: CommandSender,
+        message: String,
+        placeholders: Map<String, String> = emptyMap(),
+    ) {
+        sender.sendMessage(mini(sender, message, placeholders))
     }
 
     protected fun sync(task: Runnable): ScheduledTask {
@@ -457,22 +480,18 @@ abstract class STPlugin(
 
     protected fun subscribe(
         channel: String,
-        listener: (channel: String, payload: String) -> Unit,
+        listener: BridgeListener,
     ): BridgeSubscription {
-        val subscription = bridge.subscribe(channel) { incomingChannel, payload ->
-            listener(incomingChannel, payload)
-        }
+        val subscription = bridge.subscribe(channel, listener)
         bridgeSubscriptions += subscription
         return subscription
     }
 
     protected fun subscribe(
         channel: BridgeChannel,
-        listener: (channel: String, payload: String) -> Unit,
+        listener: BridgeListener,
     ): BridgeSubscription {
-        val subscription = bridge.subscribe(channel) { incomingChannel, payload ->
-            listener(incomingChannel, payload)
-        }
+        val subscription = bridge.subscribe(channel, listener)
         bridgeSubscriptions += subscription
         return subscription
     }
@@ -480,10 +499,10 @@ abstract class STPlugin(
     protected fun <T : Any> subscribe(
         channel: BridgeChannel,
         codec: BridgeCodec<T>,
-        listener: (message: T) -> Unit,
+        listener: BridgePayloadListener<T>,
     ): BridgeSubscription {
         val subscription = bridge.subscribe(channel, codec) { message ->
-            listener(message.payload)
+            listener.onMessage(message.payload)
         }
         bridgeSubscriptions += subscription
         return subscription
@@ -544,19 +563,15 @@ abstract class STPlugin(
         bridgeSubscriptions.remove(subscription)
     }
 
-    protected fun console(message: String, placeholders: Map<String, String> = emptyMap()) {
-        server.consoleSender.sendMessage(mini(message, placeholders))
-    }
-
-    protected fun send(sender: CommandSender, message: String, placeholders: Map<String, String> = emptyMap()) {
-        sender.sendMessage(mini(sender, message, placeholders))
-    }
-
     protected fun command(
         name: String,
-        builder: CommandDslBuilder.() -> Unit,
+        tree: CommandTree,
     ) {
-        registerCommandWithMetrics(commandDsl(name, builder))
+        registerCommandWithMetrics(
+            commandDsl(name) {
+                tree.define(this)
+            },
+        )
     }
 
     protected fun command(command: STCommand<*>) {
@@ -574,35 +589,13 @@ abstract class STPlugin(
     }
 
     private fun registerCommandWithMetrics(definition: CommandDefinition) {
-        val instrumented = instrumentCommandDefinition(definition)
+        val instrumented =
+            CommandMetricsInstrumenter.instrument(definition) {
+                STPlugins.markCommandExecuted(pluginName = this.name, at = Instant.now())
+            }
         commandRegistrar.register(instrumented)
         repeat(instrumented.executableEndpointCount()) {
             STPlugins.markCommandRegistered(this.name)
-        }
-    }
-
-    private fun instrumentCommandDefinition(definition: CommandDefinition): CommandDefinition {
-        return definition.copy(
-            executor = definition.executor?.let(::instrumentExecutor),
-            children = definition.children.map(::instrumentNode),
-        )
-    }
-
-    private fun instrumentNode(
-        node: studio.singlethread.lib.framework.api.command.CommandNodeSpec,
-    ): studio.singlethread.lib.framework.api.command.CommandNodeSpec {
-        return node.copy(
-            executor = node.executor?.let(::instrumentExecutor),
-            children = node.children.map(::instrumentNode),
-        )
-    }
-
-    private fun instrumentExecutor(
-        delegate: studio.singlethread.lib.framework.api.command.CommandExecutor,
-    ): studio.singlethread.lib.framework.api.command.CommandExecutor {
-        return studio.singlethread.lib.framework.api.command.CommandExecutor { context ->
-            STPlugins.markCommandExecuted(pluginName = this.name, at = Instant.now())
-            delegate.execute(context)
         }
     }
 
@@ -789,7 +782,7 @@ abstract class STPlugin(
         }
 
         activateResourceIntegrations()
-        activateInventoryUi()
+        activateGui()
         enable()
         STPlugins.markEnabled(name)
         syncCapabilitySummary()
@@ -900,10 +893,10 @@ abstract class STPlugin(
         kernel.registerService(EventRegistrar::class, bukkitEventRegistrar)
         kernel.registerService(BukkitEventRegistrar::class, bukkitEventRegistrar)
         kernel.registerService(BukkitEventCaller::class, bukkitEventCaller)
-        val inventoryUi = BukkitInventoryUiService(this)
-        inventoryUiBootstrap = inventoryUi
-        kernel.registerService(InventoryUiService::class, inventoryUi)
-        kernel.registerService(BukkitInventoryUiService::class, inventoryUi)
+        val guiService = BukkitGuiService(this)
+        guiBootstrap = guiService
+        kernel.registerService(StGuiService::class, guiService)
+        kernel.registerService(BukkitGuiService::class, guiService)
         capabilityRegistry.disable(CapabilityNames.UI_INVENTORY, "Waiting for plugin enable")
     }
 
@@ -913,8 +906,8 @@ abstract class STPlugin(
         }
         bridgeSubscriptions.clear()
         runCatching { kernel.service(BukkitResourceIntegrationRuntime::class)?.shutdown() }
-        runCatching { inventoryUi.close() }
-        inventoryUiBootstrap = null
+        runCatching { guiService.close() }
+        guiBootstrap = null
     }
 
     private fun activateResourceIntegrations() {
@@ -924,8 +917,8 @@ abstract class STPlugin(
             }
     }
 
-    private fun activateInventoryUi() {
-        val service = inventoryUiBootstrap ?: return
+    private fun activateGui() {
+        val service = guiBootstrap ?: return
         runCatching {
             service.activate()
         }.onSuccess {
@@ -934,9 +927,9 @@ abstract class STPlugin(
         }.onFailure { error ->
             capabilityRegistry.disable(
                 CapabilityNames.UI_INVENTORY,
-                "Inventory UI activation failed: ${error.message ?: "unknown"}",
+                "GUI activation failed: ${error.message ?: "unknown"}",
             )
-            logger.warning("Inventory UI service activation failed: ${error.message}")
+            logger.warning("GUI service activation failed: ${error.message}")
             syncCapabilitySummary()
         }
     }

@@ -5,7 +5,7 @@ import org.spongepowered.configurate.objectmapping.meta.Comment
 
 @ConfigSerializable
 class BridgeFileSettings {
-    @field:Comment("Bridge mode. LOCAL=memory only, REDIS=distributed only, COMPOSITE=local+distributed.")
+    @field:Comment("Bridge mode. LOCAL=memory only, REDIS=distributed only, COMPOSITE=local+distributed (publish/subscribe fan-out, request distributed-first with local fallback).")
     var mode: BridgeMode = BridgeMode.LOCAL
 
     @field:Comment("Default namespace used when channel string has no explicit namespace prefix.")

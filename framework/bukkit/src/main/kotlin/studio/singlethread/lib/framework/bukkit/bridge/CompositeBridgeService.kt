@@ -9,6 +9,7 @@ import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
+import studio.singlethread.lib.framework.api.bridge.BridgeTypedListener
 import java.util.concurrent.CompletableFuture
 
 class CompositeBridgeService(
@@ -23,20 +24,44 @@ class CompositeBridgeService(
         channel: BridgeChannel,
         payload: String,
     ) {
+        val distributedService = distributed
+        if (distributedService == null) {
+            local.publish(channel, payload)
+            return
+        }
         local.publish(channel, payload)
-        distributed?.publish(channel, payload)
+        distributedService.publish(channel, payload)
     }
 
     override fun subscribe(
         channel: BridgeChannel,
         listener: BridgeListener,
     ): BridgeSubscription {
+        val distributedService = distributed
+        if (distributedService == null) {
+            return local.subscribe(channel, listener)
+        }
         val localSub = local.subscribe(channel, listener)
-        val distributedSub = distributed?.subscribe(channel, listener)
-
+        val distributedSub = distributedService.subscribe(channel, listener)
         return BridgeSubscription {
             localSub.unsubscribe()
-            distributedSub?.unsubscribe()
+            distributedSub.unsubscribe()
+        }
+    }
+
+    override fun subscribeWithSource(
+        channel: BridgeChannel,
+        listener: BridgeTypedListener<String>,
+    ): BridgeSubscription {
+        val distributedService = distributed
+        if (distributedService == null) {
+            return local.subscribeWithSource(channel, listener)
+        }
+        val localSub = local.subscribeWithSource(channel, listener)
+        val distributedSub = distributedService.subscribeWithSource(channel, listener)
+        return BridgeSubscription {
+            localSub.unsubscribe()
+            distributedSub.unsubscribe()
         }
     }
 

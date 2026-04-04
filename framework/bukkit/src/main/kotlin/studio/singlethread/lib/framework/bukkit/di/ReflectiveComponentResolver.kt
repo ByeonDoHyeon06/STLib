@@ -49,7 +49,11 @@ internal class ReflectiveComponentResolver(
             @Suppress("UNCHECKED_CAST")
             val typed = componentType as Class<Any>
             runCatching {
-                resolve(typed)
+                if (scopeOf(componentType) == STScope.SINGLETON) {
+                    resolve(typed)
+                } else {
+                    validateGraph(componentType, ArrayDeque())
+                }
             }.onSuccess {
                 validated += 1
             }.onFailure { error ->
@@ -130,6 +134,55 @@ internal class ReflectiveComponentResolver(
         } finally {
             stack.removeLast()
         }
+    }
+
+    private fun validateGraph(
+        type: Class<*>,
+        stack: ArrayDeque<Class<*>>,
+    ) {
+        if (type.isInstance(owner) || type == STKernel::class.java) {
+            return
+        }
+        if (kernel.service(type.kotlin) != null || singletonInstances.containsKey(type)) {
+            return
+        }
+
+        if (type.isInterface || Modifier.isAbstract(type.modifiers)) {
+            throw IllegalArgumentException(
+                "Cannot instantiate abstract type ${type.name}. Register it as a kernel service or provide a concrete component.",
+            )
+        }
+
+        detectCircularDependency(type, stack)
+        try {
+            val constructor = selectConstructor(type)
+            constructor.parameterTypes.forEach { dependencyType ->
+                validateDependency(dependencyType, stack)
+            }
+            fieldsNeedingInjection(type).forEach { field ->
+                if (Modifier.isFinal(field.modifiers)) {
+                    throw IllegalArgumentException(
+                        "Field injection target must be mutable in ${type.name}: ${field.name}",
+                    )
+                }
+                validateDependency(field.type, stack)
+            }
+        } finally {
+            stack.removeLast()
+        }
+    }
+
+    private fun validateDependency(
+        dependencyType: Class<*>,
+        stack: ArrayDeque<Class<*>>,
+    ) {
+        if (dependencyType.isInstance(owner) || dependencyType == STKernel::class.java) {
+            return
+        }
+        if (kernel.service(dependencyType.kotlin) != null || singletonInstances.containsKey(dependencyType)) {
+            return
+        }
+        validateGraph(dependencyType, stack)
     }
 
     private fun detectCircularDependency(

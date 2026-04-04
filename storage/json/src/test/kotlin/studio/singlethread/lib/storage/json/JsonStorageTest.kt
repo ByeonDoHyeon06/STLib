@@ -2,14 +2,17 @@ package studio.singlethread.lib.storage.json
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import studio.singlethread.lib.storage.api.CompositeStorageApi
 import studio.singlethread.lib.storage.api.Query
 import studio.singlethread.lib.storage.api.config.DatabaseConfig
 import studio.singlethread.lib.storage.api.config.StorageConfig
+import studio.singlethread.lib.storage.api.exception.StorageSerializationException
 import studio.singlethread.lib.storage.api.extensions.get
 import studio.singlethread.lib.storage.api.extensions.set
+import java.nio.file.Files
 import java.nio.file.Path
 
 class JsonStorageTest {
@@ -52,5 +55,22 @@ class JsonStorageTest {
             storage.close()
             api.close()
         }
+    }
+
+    @Test
+    fun `json backend should fail fast when storage file is corrupted`() {
+        val file = tempDir.resolve("stlib-storage-corrupted.json")
+        Files.writeString(file, "{ this-is-not-valid-json")
+
+        val api = CompositeStorageApi(listOf(JsonStorageFactory(primaryThreadChecker = { false })))
+        assertThrows(StorageSerializationException::class.java) {
+            api.create(
+                StorageConfig(
+                    namespace = "json",
+                    databaseConfig = DatabaseConfig.Json(file.toString()),
+                ),
+            )
+        }
+        api.close()
     }
 }

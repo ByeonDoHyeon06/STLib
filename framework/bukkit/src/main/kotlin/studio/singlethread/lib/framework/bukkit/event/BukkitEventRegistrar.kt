@@ -11,7 +11,7 @@ import java.util.IdentityHashMap
 class BukkitEventRegistrar(
     private val registerListener: (Listener) -> Unit,
     private val unregisterListener: (Listener) -> Unit,
-) : EventRegistrar {
+) : EventRegistrar<Listener> {
     private val listeners = Collections.newSetFromMap(IdentityHashMap<Listener, Boolean>())
 
     constructor(plugin: JavaPlugin) : this(
@@ -19,13 +19,9 @@ class BukkitEventRegistrar(
         unregisterListener = { listener -> HandlerList.unregisterAll(listener) },
     )
 
-    override fun listen(listener: Any) {
-        listen(asBukkitListener(listener))
-    }
+    override fun listen(listener: Listener) = listenBukkit(listener)
 
-    override fun unlisten(listener: Any) {
-        unlisten(asBukkitListener(listener))
-    }
+    override fun unlisten(listener: Listener) = unlistenBukkit(listener)
 
     override fun unlistenAll() {
         val snapshot = synchronized(listeners) {
@@ -36,7 +32,7 @@ class BukkitEventRegistrar(
         snapshot.forEach(unregisterListener)
     }
 
-    fun listen(listener: Listener) {
+    fun listenBukkit(listener: Listener) {
         val shouldRegister = synchronized(listeners) { listeners.add(listener) }
         if (!shouldRegister) {
             return
@@ -44,18 +40,11 @@ class BukkitEventRegistrar(
         registerListener(listener)
     }
 
-    fun unlisten(listener: Listener) {
+    fun unlistenBukkit(listener: Listener) {
         val shouldUnregister = synchronized(listeners) { listeners.remove(listener) }
         if (!shouldUnregister) {
             return
         }
         unregisterListener(listener)
-    }
-
-    private fun asBukkitListener(listener: Any): Listener {
-        return listener as? Listener
-            ?: throw IllegalArgumentException(
-                "Listener must implement org.bukkit.event.Listener on Bukkit platform: ${listener::class.qualifiedName}",
-            )
     }
 }

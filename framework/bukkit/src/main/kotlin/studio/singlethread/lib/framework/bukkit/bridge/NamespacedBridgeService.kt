@@ -8,6 +8,7 @@ import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
 import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
+import studio.singlethread.lib.framework.api.bridge.BridgeTypedListener
 import java.util.concurrent.CompletableFuture
 
 class NamespacedBridgeService(
@@ -44,6 +45,13 @@ class NamespacedBridgeService(
         listener: BridgeListener,
     ): BridgeSubscription {
         return delegate.subscribe(channel, listener)
+    }
+
+    override fun subscribeWithSource(
+        channel: BridgeChannel,
+        listener: BridgeTypedListener<String>,
+    ): BridgeSubscription {
+        return delegate.subscribeWithSource(channel, listener)
     }
 
     override fun <Req : Any, Res : Any> respond(

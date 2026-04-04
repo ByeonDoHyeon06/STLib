@@ -83,13 +83,40 @@ Use this routing table before coding:
   - `class MyCmd(plugin: MyPlugin) : STCommand<MyPlugin>(plugin)`
   - `command<MyCmd>()`
 
+### GUI (Unified)
+
+- Single runtime entry:
+  - `val gui = gui(rows, title) { ... }` then `player.openInventory(gui)`
+  - quick default: `val gui = gui { ... }`
+  - typed inventory: `gui(title, size, InventoryType.DROPPER) { ... }`
+- Twilight-like builder primitives:
+  - `set(slot)` / `set(row, column)`
+  - `set(listOf(...), item)` multi-slot
+  - `pattern("...")` then `set('#', item)` symbol mapping (`key(...)` alias 유지)
+  - `slot`, `fill`, `border`, `row`, `column`
+  - `onOpen`, `onClose`, `onClick`
+  - `state`, `refresh`, `reopen`
+  - conditional pages: `page(stateKey, stateValue) { ... }` (base layout is default), optional `pageDefault(stateKey) { ... }`
+- Removed split path:
+  - `InventoryUiService` / `InventoryUiToolkit` (legacy split removed)
+
+### STPlugin Surface Policy
+
+- Keep `STPlugin` focused on lifecycle + orchestration helpers.
+- Do not add thin pass-through methods when the service is already exposed as property.
+  - Example: use `notifier.send(...)` directly instead of adding `tell(...)` wrapper.
+- Current notifier wrappers intentionally removed:
+  - `tell`, `announce`, `actionBar`, `title`, `tellTranslated`
+- Kept convenience parsers:
+  - `send(sender, "<mini>...")`, `console("<mini>...")`
+
 ### Events
 
 - Preferred:
   - `class JoinListener(plugin: MyPlugin) : STListener<MyPlugin>(plugin)`
   - `listen<JoinListener>()`
 - Manual Bukkit listener path remains valid:
-  - `listen(listener: Listener)`
+  - `listen(listener: Listener)` (`EventRegistrar<Listener>` 기반 compile-time type-safe)
 
 ### DI
 
@@ -119,6 +146,7 @@ Use this routing table before coding:
 - Typed/channel API:
   - `BridgeChannel(namespace, key)`
   - typed `publish/subscribe`
+  - source-aware subscribe path: `subscribeWithSource(...)` / typed incoming `BridgeIncomingMessage<T>`
   - RPC `respond(...)`, `request(...)` with `BridgeResponseStatus`
 - Target-node RPC supported
 - Redis backend via Redisson (Libby runtime load), fallback to local mode on failure

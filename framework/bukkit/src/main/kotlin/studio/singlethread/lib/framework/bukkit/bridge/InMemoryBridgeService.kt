@@ -2,6 +2,7 @@ package studio.singlethread.lib.framework.bukkit.bridge
 
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
+import studio.singlethread.lib.framework.api.bridge.BridgeIncomingMessage
 import studio.singlethread.lib.framework.api.bridge.BridgeListener
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestContext
@@ -10,6 +11,7 @@ import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
+import studio.singlethread.lib.framework.api.bridge.BridgeTypedListener
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -22,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class InMemoryBridgeService(
     private val localNodeId: BridgeNodeId = BridgeNodeId("local"),
 ) : BridgeService {
-    private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<BridgeListener>>()
+    private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<BridgeTypedListener<String>>>()
     private val requestHandlers = ConcurrentHashMap<String, CopyOnWriteArrayList<RegisteredRequestHandler>>()
     private val closed = AtomicBoolean(false)
     private val requestExecutor = Executors.newCachedThreadPool()
@@ -44,7 +46,13 @@ class InMemoryBridgeService(
         subscribers[key]
             ?.forEach { listener ->
                 runCatching {
-                    listener.onMessage(channel.asString(), payload)
+                    listener.onMessage(
+                        BridgeIncomingMessage(
+                            channel = channel,
+                            payload = payload,
+                            sourceNode = localNodeId,
+                        ),
+                    )
                 }
             }
     }
@@ -52,6 +60,15 @@ class InMemoryBridgeService(
     override fun subscribe(
         channel: BridgeChannel,
         listener: BridgeListener,
+    ): BridgeSubscription {
+        return subscribeWithSource(channel) { message ->
+            listener.onMessage(message.channel.asString(), message.payload)
+        }
+    }
+
+    override fun subscribeWithSource(
+        channel: BridgeChannel,
+        listener: BridgeTypedListener<String>,
     ): BridgeSubscription {
         if (closed.get()) {
             return BridgeSubscription {}

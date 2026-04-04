@@ -11,6 +11,10 @@ fun interface BridgeListener {
     fun onMessage(channel: String, payload: String)
 }
 
+fun interface BridgePayloadListener<T : Any> {
+    fun onMessage(payload: T)
+}
+
 fun interface BridgeTypedListener<T : Any> {
     fun onMessage(message: BridgeIncomingMessage<T>)
 }
@@ -136,6 +140,15 @@ interface BridgeService : AutoCloseable {
     fun subscribe(
         channel: BridgeChannel,
         listener: BridgeListener,
+    ): BridgeSubscription {
+        return subscribeWithSource(channel) { message ->
+            listener.onMessage(message.channel.asString(), message.payload)
+        }
+    }
+
+    fun subscribeWithSource(
+        channel: BridgeChannel,
+        listener: BridgeTypedListener<String>,
     ): BridgeSubscription
 
     fun <T : Any> publish(
@@ -151,13 +164,13 @@ interface BridgeService : AutoCloseable {
         codec: BridgeCodec<T>,
         listener: BridgeTypedListener<T>,
     ): BridgeSubscription {
-        return subscribe(channel = channel) { _, payload ->
-            val decoded = codec.decode(payload)
+        return subscribeWithSource(channel = channel) { incoming ->
+            val decoded = codec.decode(incoming.payload)
             listener.onMessage(
                 BridgeIncomingMessage(
-                    channel = channel,
+                    channel = incoming.channel,
                     payload = decoded,
-                    sourceNode = nodeId(),
+                    sourceNode = incoming.sourceNode,
                 ),
             )
         }

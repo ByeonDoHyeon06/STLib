@@ -2,7 +2,6 @@ package studio.singlethread.lib.framework.bukkit.event
 
 import org.bukkit.event.Listener
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
 class BukkitEventRegistrarTest {
@@ -51,16 +50,5 @@ class BukkitEventRegistrarTest {
         assertEquals(2, unregistered.size)
     }
 
-    @Test
-    fun `listener registration should require bukkit listener implementation`() {
-        val registrar = BukkitEventRegistrar(registerListener = {}, unregisterListener = {})
-
-        assertThrows(IllegalArgumentException::class.java) {
-            registrar.listen(NonBukkitListener)
-        }
-    }
-
     private class BukkitOnlyListener : Listener
-
-    private object NonBukkitListener
 }

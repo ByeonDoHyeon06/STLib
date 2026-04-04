@@ -2,6 +2,7 @@ package studio.singlethread.lib.framework.bukkit.bridge
 
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
+import studio.singlethread.lib.framework.api.bridge.BridgeIncomingMessage
 import studio.singlethread.lib.framework.api.bridge.BridgeListener
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestContext
@@ -10,6 +11,7 @@ import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
 import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
+import studio.singlethread.lib.framework.api.bridge.BridgeTypedListener
 import studio.singlethread.lib.framework.bukkit.config.RedisBridgeSettings
 import java.lang.reflect.Proxy
 import java.nio.charset.StandardCharsets
@@ -41,12 +43,27 @@ class RedissonBridgeService private constructor(
         if (closed.get()) {
             return
         }
-        publishTopic(topicName(type = "pub", channel = channel), payload)
+        publishTopic(
+            topicName(type = "pub", channel = channel),
+            PublishEnvelope(
+                sourceNode = localNodeId.value,
+                payload = payload,
+            ).encode(),
+        )
     }
 
     override fun subscribe(
         channel: BridgeChannel,
         listener: BridgeListener,
+    ): BridgeSubscription {
+        return subscribeWithSource(channel) { message ->
+            listener.onMessage(message.channel.asString(), message.payload)
+        }
+    }
+
+    override fun subscribeWithSource(
+        channel: BridgeChannel,
+        listener: BridgeTypedListener<String>,
     ): BridgeSubscription {
         if (closed.get()) {
             return BridgeSubscription {}
@@ -55,7 +72,15 @@ class RedissonBridgeService private constructor(
         val topic = topicName(type = "pub", channel = channel)
         val topicListener =
             addTopicListener(topic) { payload ->
-                listener.onMessage(channel.asString(), payload)
+                val envelope = PublishEnvelope.decode(payload)
+                val sourceNode = envelope?.sourceNode?.ifBlank { null }
+                listener.onMessage(
+                    BridgeIncomingMessage(
+                        channel = channel,
+                        payload = envelope?.payload ?: payload,
+                        sourceNode = BridgeNodeId(sourceNode ?: UNKNOWN_SOURCE_NODE),
+                    ),
+                )
             }
 
         return BridgeSubscription {
@@ -172,25 +197,29 @@ class RedissonBridgeService private constructor(
             }
 
         val timeoutTask =
-            timeoutExecutor.schedule(
-                {
-                    if (future.isDone) {
-                        return@schedule
-                    }
-                    future.complete(
-                        BridgeResponse(
-                            status = BridgeResponseStatus.TIMEOUT,
-                            message = "bridge request timed out after ${timeoutMillis}ms",
-                            responderNode = null,
-                        ),
-                    )
-                },
-                timeoutMillis.coerceAtLeast(1L),
-                TimeUnit.MILLISECONDS,
-            )
+            if (timeoutMillis <= 0L) {
+                null
+            } else {
+                timeoutExecutor.schedule(
+                    {
+                        if (future.isDone) {
+                            return@schedule
+                        }
+                        future.complete(
+                            BridgeResponse(
+                                status = BridgeResponseStatus.TIMEOUT,
+                                message = "bridge request timed out after ${timeoutMillis}ms",
+                                responderNode = null,
+                            ),
+                        )
+                    },
+                    timeoutMillis,
+                    TimeUnit.MILLISECONDS,
+                )
+            }
 
         future.whenComplete { _, _ ->
-            timeoutTask.cancel(false)
+            timeoutTask?.cancel(false)
             removeTopicListener(responseListener)
         }
 
@@ -371,6 +400,28 @@ class RedissonBridgeService private constructor(
         val listenerId: Int,
     )
 
+    private data class PublishEnvelope(
+        val sourceNode: String,
+        val payload: String,
+    ) {
+        fun encode(): String {
+            return listOf(sourceNode, encodeBase64(payload)).joinToString("|")
+        }
+
+        companion object {
+            fun decode(raw: String): PublishEnvelope? {
+                val parts = raw.split('|', limit = 2)
+                if (parts.size != 2) {
+                    return null
+                }
+                return PublishEnvelope(
+                    sourceNode = parts[0],
+                    payload = decodeBase64(parts[1]),
+                )
+            }
+        }
+    }
+
     private data class RegisteredRequestHandler(
         val requestCodec: BridgeCodec<Any>,
         val responseCodec: BridgeCodec<Any>,
@@ -394,7 +445,7 @@ class RedissonBridgeService private constructor(
 
         companion object {
             fun decode(raw: String): RequestEnvelope? {
-                val parts = raw.split("|")
+                val parts = raw.split('|', limit = 4)
                 if (parts.size != 4) {
                     return null
                 }
@@ -427,7 +478,7 @@ class RedissonBridgeService private constructor(
 
         companion object {
             fun decode(raw: String): ResponseEnvelope? {
-                val parts = raw.split("|")
+                val parts = raw.split('|', limit = 5)
                 if (parts.size != 5) {
                     return null
                 }
@@ -445,6 +496,8 @@ class RedissonBridgeService private constructor(
     }
 
     companion object {
+        private const val UNKNOWN_SOURCE_NODE = "unknown"
+
         fun createOrNull(
             nodeId: BridgeNodeId,
             namespace: String,

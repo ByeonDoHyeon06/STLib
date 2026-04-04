@@ -10,4 +10,17 @@ class ScanSingleton
 class ScanPrototype(
     @Suppress("unused")
     private val singleton: ScanSingleton,
-)
+) {
+    init {
+        createdCount += 1
+    }
+
+    companion object {
+        @Volatile
+        var createdCount: Int = 0
+
+        fun resetCounter() {
+            createdCount = 0
+        }
+    }
+}

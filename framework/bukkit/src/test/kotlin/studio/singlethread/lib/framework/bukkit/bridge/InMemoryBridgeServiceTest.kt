@@ -94,5 +94,32 @@ class InMemoryBridgeServiceTest {
         assertEquals(BridgeResponseStatus.NO_HANDLER, response.status)
     }
 
+    @Test
+    fun `request should treat non-positive timeout as unlimited`() {
+        val service = InMemoryBridgeService()
+        val channel = BridgeChannel.of("test", "slow")
+
+        service.respond(
+            channel = channel,
+            requestCodec = stringCodec(),
+            responseCodec = stringCodec(),
+        ) { request ->
+            Thread.sleep(50)
+            studio.singlethread.lib.framework.api.bridge.BridgeRequestResult.success(request.payload)
+        }
+
+        val response =
+            service.request(
+                channel = channel,
+                payload = "ok",
+                requestCodec = stringCodec(),
+                responseCodec = stringCodec(),
+                timeoutMillis = 0,
+            ).get(2, TimeUnit.SECONDS)
+
+        assertEquals(BridgeResponseStatus.SUCCESS, response.status)
+        assertEquals("ok", response.payload)
+    }
+
     private fun stringCodec(): BridgeCodec<String> = StringBridgeCodec
 }

@@ -22,7 +22,7 @@ class EventRegistrarContractTest {
 
     private object TestListener
 
-    private class InMemoryEventRegistrar : EventRegistrar {
+    private class InMemoryEventRegistrar : EventRegistrar<TestListener> {
         var listenCalls = 0
             private set
 
@@ -32,11 +32,11 @@ class EventRegistrarContractTest {
         var unlistenAllCalls = 0
             private set
 
-        override fun listen(listener: Any) {
+        override fun listen(listener: TestListener) {
             listenCalls++
         }
 
-        override fun unlisten(listener: Any) {
+        override fun unlisten(listener: TestListener) {
             unlistenCalls++
         }
 
@@ -44,4 +44,5 @@ class EventRegistrarContractTest {
             unlistenAllCalls++
         }
     }
+
 }
