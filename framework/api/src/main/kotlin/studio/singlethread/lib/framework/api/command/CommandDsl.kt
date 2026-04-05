@@ -458,6 +458,17 @@ fun commandDsl(
     return dslBuilder.build()
 }
 
+fun commandDsl(
+    name: String,
+    tree: CommandTree,
+): CommandDefinition {
+    return commandDsl(name) builder@{
+        with(tree) {
+            this@builder.define()
+        }
+    }
+}
+
 private fun validateArgumentOrdering(
     arguments: List<CommandArgumentSpec>,
     scope: String,

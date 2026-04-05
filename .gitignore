@@ -124,6 +124,7 @@ runs/
 **/test-server/
 **/test-workspace/
 **/sandbox/
+examples-local/
 
 .agents/skills/solid
 skills-lock.json

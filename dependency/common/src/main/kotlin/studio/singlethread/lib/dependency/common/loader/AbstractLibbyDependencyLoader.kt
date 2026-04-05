@@ -28,7 +28,7 @@ abstract class AbstractLibbyDependencyLoader : DependencyLoader {
             DependencyLoadResult(
                 library = library,
                 status = DependencyStatus.FAILED,
-                message = error.message,
+                message = error.describeFailure(),
                 error = error,
             )
         }
@@ -65,6 +65,14 @@ abstract class AbstractLibbyDependencyLoader : DependencyLoader {
 
         descriptor.id?.let { callBuilderString(builder, "id", it) }
 
+        if (descriptor.resolveTransitives) {
+            callBuilderOptionalBoolean(
+                builder = builder,
+                value = true,
+                methods = TRANSITIVE_METHODS,
+            )
+        }
+
         if (descriptor.isolated) {
             callBuilderBoolean(builder, "isolatedLoad", true)
         }
@@ -88,5 +96,50 @@ abstract class AbstractLibbyDependencyLoader : DependencyLoader {
         builder.javaClass
             .getMethod(method, Boolean::class.javaPrimitiveType)
             .invoke(builder, value)
+    }
+
+    private fun callBuilderOptionalBoolean(
+        builder: Any,
+        value: Boolean,
+        methods: List<String>,
+    ) {
+        methods.forEach { method ->
+            val candidate =
+                runCatching {
+                    builder.javaClass.getMethod(method, Boolean::class.javaPrimitiveType)
+                }.getOrNull()
+            if (candidate != null) {
+                candidate.invoke(builder, value)
+                return
+            }
+        }
+    }
+
+    private companion object {
+        private val TRANSITIVE_METHODS =
+            listOf(
+                "resolveTransitiveDependencies",
+                "withTransitiveDependencies",
+                "transitiveDependencies",
+                "includeTransitiveDependencies",
+            )
+    }
+
+    private fun Throwable.describeFailure(): String {
+        val root = rootCause()
+        val message = root.message?.takeIf { it.isNotBlank() } ?: "<no-message>"
+        return if (root === this) {
+            "${root.javaClass.simpleName}: $message"
+        } else {
+            "${this.javaClass.simpleName} -> ${root.javaClass.simpleName}: $message"
+        }
+    }
+
+    private fun Throwable.rootCause(): Throwable {
+        var current: Throwable = this
+        while (current.cause != null && current.cause !== current) {
+            current = current.cause!!
+        }
+        return current
     }
 }

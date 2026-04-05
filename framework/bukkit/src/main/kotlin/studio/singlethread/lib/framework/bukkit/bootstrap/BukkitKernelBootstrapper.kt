@@ -258,7 +258,7 @@ object BukkitKernelBootstrapper {
         val redissonLibrary =
             LibraryDescriptor(
                 groupId = "org.redisson",
-                artifactId = "redisson",
+                artifactId = "redisson-all",
                 version = "3.35.0",
             )
 

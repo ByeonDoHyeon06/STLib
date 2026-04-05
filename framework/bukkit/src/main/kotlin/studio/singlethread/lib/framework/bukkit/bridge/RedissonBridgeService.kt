@@ -540,8 +540,26 @@ class RedissonBridgeService private constructor(
                     client = client,
                 )
             }.onFailure { error ->
-                logWarning("Redisson bridge initialization failed: ${error.message}")
+                logWarning("Redisson bridge initialization failed: ${error.describeBridgeFailure()}")
             }.getOrNull()
+        }
+
+        private fun Throwable.describeBridgeFailure(): String {
+            val root = rootCause()
+            val rootMessage = root.message?.takeIf { it.isNotBlank() } ?: "<no-message>"
+            return if (root === this) {
+                "${root.javaClass.simpleName}: $rootMessage"
+            } else {
+                "${this.javaClass.simpleName} -> ${root.javaClass.simpleName}: $rootMessage"
+            }
+        }
+
+        private fun Throwable.rootCause(): Throwable {
+            var current: Throwable = this
+            while (current.cause != null && current.cause !== current) {
+                current = current.cause!!
+            }
+            return current
         }
     }
 }

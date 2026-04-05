@@ -63,9 +63,13 @@ class PluginFileConfigLoader(
             bridge.requestTimeoutMillis = 3_000L
         }
 
-        if (bridge.redis.address.trim().isBlank()) {
-            bridge.redis.address = "redis://127.0.0.1:6379"
-        }
+        val redisAddress = bridge.redis.address.trim()
+        bridge.redis.address =
+            when {
+                redisAddress.isBlank() -> "redis://127.0.0.1:6379"
+                redisAddress.contains("://") -> redisAddress
+                else -> "redis://$redisAddress"
+            }
         if (bridge.redis.connectTimeoutMillis <= 0L) {
             bridge.redis.connectTimeoutMillis = 3_000L
         }

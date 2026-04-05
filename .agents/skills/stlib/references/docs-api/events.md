@@ -1,10 +1,10 @@
 # 이벤트 API
 
-현재 STLib(Bukkit) 이벤트 모델은 **Bukkit 이벤트 시스템과 완전 호환**되는 형태입니다.
+현재 STLib(Bukkit) 이벤트 모델은 **Bukkit 이벤트 시스템과 완전 호환**됩니다.
 
 핵심 구조:
 
-- API 계약: `EventRegistrar` (`framework:api`)
+- API 계약: `EventRegistrar<L>` (`framework:api`)
 - Bukkit 구현: `BukkitEventRegistrar` (`framework:bukkit`)
 - ST 전용 베이스:
   - `STListener<P : STPlugin>` (Bukkit `Listener` 상속)
@@ -13,17 +13,17 @@
 ## API 계약 (`framework:api`)
 
 ```kotlin
-interface EventRegistrar {
-    fun listen(listener: Any)
-    fun unlisten(listener: Any)
+interface EventRegistrar<in L : Any> {
+    fun listen(listener: L)
+    fun unlisten(listener: L)
     fun unlistenAll()
 }
 ```
 
 메모:
 
-- 계약은 플랫폼 중립을 위해 `Any`를 받습니다.
-- Bukkit 구현(`BukkitEventRegistrar`)에서는 런타임에 `org.bukkit.event.Listener` 여부를 검증합니다.
+- 계약은 플랫폼 중립 generic 타입입니다.
+- Bukkit 경로에서는 `EventRegistrar<org.bukkit.event.Listener>`로 사용합니다.
 
 ## `STListener` (plugin 주입형)
 
@@ -39,7 +39,7 @@ abstract class STListener<out P : STPlugin>(
 class JoinListener(plugin: MyPlugin) : STListener<MyPlugin>(plugin) {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
-        plugin.announce(event.player, "<green>Welcome</green>")
+        event.player.sendMessage("Welcome")
     }
 }
 ```

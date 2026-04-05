@@ -1,233 +1,263 @@
 ---
 name: stlib
 description: >
-  Use this skill for any STLib work: feature implementation, refactor, review, debugging,
-  docs sync, and consumer plugin usage. Covers STPlugin lifecycle, CommandAPI thin-wrapper
-  DSL, plugin-injected STCommand/STListener, reflective DI with package-root auto scan,
-  Scheduler hybrid API (Runnable-safe + duration/unit + chained completion), Bridge v2
-  (typed pub/sub + target-node RPC + Redisson fallback), storage/resource integrations,
-  translation, capability gating, and config bootstrap/migration.
+  Use this skill for STLib implementation/review/docs sync. Covers STPlugin lifecycle,
+  CommandAPI thin-wrapper DSL, plugin-injected STCommand/STListener, reflective DI
+  auto-scan, unified GUI DSL, scheduler hybrid API, Bridge v2 (typed pub/sub + target-node
+  RPC + Redisson fallback), storage/resource/translation integrations, capability gating,
+  and config bootstrap/migration.
 ---
 
 # STLib Skill
 
-## Agent Quick Start
+## 목적
 
-When this skill is active, execute in this order:
+이 스킬은 "현재 STLib 구현과 문서를 정확히 일치"시키는 데 초점을 둡니다.
+코드 수정 시 항상 `framework:api` 계약 -> `framework:bukkit` 구현 -> `framework:core` 운영 플러그인 순서로 검증합니다.
 
-1. Read `references/docs-api/README.md` and `references/api-map.md`.
-2. Identify layer first: `framework:api` vs `framework:bukkit` vs `framework:core`.
-3. Preserve lifecycle/degrade defaults (fail-fast only for unsafe bootstrap states).
-4. Implement minimal surface change, then wire through STPlugin helpers.
-5. Update docs snapshot files in this skill if public behavior changed.
-6. Run the smallest valid test matrix, then expand if needed.
+## 빠른 실행 순서
 
-## AI-Friendly Task Router
+1. 레이어를 먼저 고릅니다: `api` / `bukkit` / `core` / `kernel`.
+2. 공개 API 변경 여부를 판단합니다.
+3. 변경 시 Capability degrade 정책(OFF + reason)을 함께 반영합니다.
+4. `README.md`와 이 스킬 문서를 같이 갱신합니다.
+5. 최소 검증(`:framework:api:test`, `:framework:bukkit:test`, `:framework:core:test`)을 수행합니다.
 
-Use this routing table before coding:
+## 모듈 경계 (필수)
 
-- Command behavior issue:
-  - Touch: `framework/api/command`, `framework/bukkit/command`, `framework/bukkit/lifecycle/STPlugin.kt`
-  - Verify: `./gradlew :framework:api:test :framework:bukkit:test`
+- `framework:api`
+  - 플랫폼 타입 금지(Bukkit/Paper 클래스 참조 금지)
+  - 계약/모델/DSL만 정의
+- `framework:kernel`
+  - 플랫폼 비종속 엔진/레지스트리/서비스 wiring 코어
+- `framework:bukkit`
+  - Bukkit/Paper/Folia 구현, CommandAPI 바인딩, 이벤트/GUI/DI/브리지 런타임
+  - `lifecycle/support`에 보조 오케스트레이션/호환성/캐시 유틸 배치
+- `framework:core`
+  - STLib 운영 플러그인(`/stlib`, `/stlibgui`, health/dashboard/reload/banner)
 
-- Event/listener issue:
-  - Touch: `framework/api/event` (contract), `framework/bukkit/event`, `STPlugin.listen/unlisten`
-  - Verify: `./gradlew :framework:bukkit:test`
+## 현재 STPlugin 표면 (정확 기준)
 
-- DI/component issue:
-  - Touch: `framework/api/di`, `framework/bukkit/di`
-  - Verify: `./gradlew :framework:bukkit:test`
+### 서비스 프로퍼티
 
-- Scheduler issue:
-  - Touch: `framework/api/scheduler`, `framework/bukkit/scheduler`, `STPlugin` helpers
-  - Verify: `./gradlew :framework:api:test :framework:bukkit:test`
+`STPlugin`은 아래 서비스를 protected property로 제공합니다:
 
-- Bridge/Redis issue:
-  - Touch: `framework/api/bridge`, `framework/bukkit/bridge`, bootstrap/config wiring
-  - Verify: `./gradlew :framework:bukkit:test :framework:core:test`
+- `text: TextService`
+- `translation: TranslationService`
+- `notifier: NotifierService`
+- `scheduler: SchedulerService`
+- `commandRegistrar: CommandRegistrar`
+- `eventRegistrar: EventRegistrar<Listener>`
+- `configService: ConfigService`
+- `configRegistry: ConfigRegistry`
+- `storageApi: StorageApi`
+- `storage: Storage`
+- `bridge: BridgeService`
+- `guiService: StGuiService`
+- `resource: ResourceService`
+- `pluginConfig: PluginFileConfig`
 
-- STLib ops command/gui/health:
-  - Touch: `framework/core`
-  - Verify: `./gradlew :framework:core:test`
+### 핵심 헬퍼
 
-- Config generation/migration issue:
-  - Touch: `framework/bukkit/config`, `framework/api/config`, `framework/core/config`
-  - Verify: `./gradlew :configurate:test :framework:bukkit:test :framework:core:test`
+- text/translation
+  - `mini(message, placeholders)`
+  - `mini(sender, message, placeholders, usePlaceholderApi=true)`
+  - `translate(...)`, `sendTranslated(...)`, `reloadTranslations()`
+  - `send(sender, ...)`, `console(...)` (간단 경로)
+- scheduler
+  - legacy: `sync`, `async`, `later(ticks)`, `timer(ticks,ticks)`
+  - high-level: `later(delay, unit)`, `asyncLater(...)`, `timer(delay, period, unit)`, `asyncTimer(...)`
+- command/event/di
+  - `command("name") { ... }`, `command<MyCommand>()`
+  - `listen(listener)` / `listen<MyListener>()`
+  - `component<T>()`
+- bridge
+  - `bridgeChannel(...)`, `publish(...)`, `subscribe(...)`, `respond(...)`, `request(...)`
 
-## Non-Negotiable Guardrails
+## Lifecycle / 안정성 규칙
 
-1. Respect module boundaries
-- `framework:api`: platform-agnostic contracts only.
-- `framework:kernel`: platform-agnostic engine internals.
-- `framework:core`: STLib ops runtime (commands/gui/dashboard/health).
-- `framework:bukkit`: Bukkit/Paper/Folia implementations only.
+순서 고정:
 
-2. Preserve lifecycle ordering
-- `onLoad -> initialize -> load -> onEnable -> enable -> onDisable -> disable`
-- Keep disable pipeline resilient (`disable`, `unlistenAll`, cleanup, kernel shutdown, command API shutdown).
+`onLoad -> initialize -> load -> onEnable -> enable -> onDisable -> disable`
 
-3. Keep degrade semantics
-- External dependency failure should disable capability, not crash full framework, unless core bootstrap is unsafe.
+중요:
+- `onLoad`에서 CommandAPI load + core services + kernel bootstrap + DI scan 수행
+- `onEnable`에서 CommandAPI enable 후 실제 기능 활성화
+- `onDisable`은 disable pipeline으로 정리(리스너 해제/리소스 정리/커맨드 API 종료)
+- 외부 연동 실패는 가능하면 capability degrade로 처리
 
-4. Keep classloader-safe public signatures
-- Public runtime helper APIs should prefer `Runnable`/Java-friendly contracts.
-- Do not expose `kotlin.jvm.functions.*` in critical STPlugin runtime signatures.
+STLib 배너 정책:
+- 배너는 `STPlugin` 공통이 아니라 `framework:core:STLib`에서만 출력
+- 타이틀 아트 수정 포인트는 `STLib.stlibTitleAsciiArt()`
 
-## Current Public Runtime Model (vNext)
+## Command DSL (v3, Thin Wrapper)
 
-### Commands
+### 권장 사용
 
-- DSL style:
-  - `command("name") { literal(...); argument(...); executes { ... } }`
-- Class style:
-  - `class MyCmd(plugin: MyPlugin) : STCommand<MyPlugin>(plugin)`
-  - `command<MyCmd>()`
+```kotlin
+command("test") {
+    permission = "example.test"
 
-### GUI (Unified)
+    literal("show") {
+        string("x")
+        string("y")
+        executes { ctx -> ctx.reply("x=${ctx.stringArgument("x")}, y=${ctx.stringArgument("y")}") }
+    }
 
-- Single runtime entry:
-  - `val gui = gui(rows, title) { ... }` then `player.openInventory(gui)`
-  - quick default: `val gui = gui { ... }`
-  - typed inventory: `gui(title, size, InventoryType.DROPPER) { ... }`
-- Twilight-like builder primitives:
-  - `set(slot)` / `set(row, column)`
-  - `set(listOf(...), item)` multi-slot
-  - `pattern("...")` then `set('#', item)` symbol mapping (`key(...)` alias 유지)
-  - `slot`, `fill`, `border`, `row`, `column`
-  - `onOpen`, `onClose`, `onClick`
-  - `state`, `refresh`, `reopen`
-  - conditional pages: `page(stateKey, stateValue) { ... }` (base layout is default), optional `pageDefault(stateKey) { ... }`
-- Removed split path:
-  - `InventoryUiService` / `InventoryUiToolkit` (legacy split removed)
+    literal("clear") {
+        executes { ctx -> ctx.reply("cleared") }
+    }
+}
+```
 
-### STPlugin Surface Policy
+### 클래스형
 
-- Keep `STPlugin` focused on lifecycle + orchestration helpers.
-- Do not add thin pass-through methods when the service is already exposed as property.
-  - Example: use `notifier.send(...)` directly instead of adding `tell(...)` wrapper.
-- Current notifier wrappers intentionally removed:
-  - `tell`, `announce`, `actionBar`, `title`, `tellTranslated`
-- Kept convenience parsers:
-  - `send(sender, "<mini>...")`, `console("<mini>...")`
+```kotlin
+class TestCommand(plugin: MyPlugin) : STCommand<MyPlugin>(plugin) {
+    override val name = "test"
 
-### Events
+    override fun build(builder: CommandDslBuilder) {
+        builder.literal("run") { executes { it.reply("ok") } }
+    }
+}
 
-- Preferred:
-  - `class JoinListener(plugin: MyPlugin) : STListener<MyPlugin>(plugin)`
-  - `listen<JoinListener>()`
-- Manual Bukkit listener path remains valid:
-  - `listen(listener: Listener)` (`EventRegistrar<Listener>` 기반 compile-time type-safe)
+command<TestCommand>()
+```
 
-### DI
+### 주의점
 
-- Resolver order:
-  - owner plugin -> kernel service -> singleton cache -> reflective creation
-- Supports `@STComponent(scope=SINGLETON|PROTOTYPE)` + `@STInject` constructor/field
-- Auto scan default scope: plugin main package root
-- Scan/graph validation is fail-fast during bootstrap
+- leaf는 반드시 `executes {}` 또는 child literal이 있어야 함
+- optional argument 뒤에 required argument 금지
+- `CommandTree`는 receiver 스타일 (`fun CommandDslBuilder.define()`)
+  - `with(root) { ... }` 패턴을 새 코드에 쓰지 않음
 
-### Scheduler (Hybrid)
+## GUI DSL (Unified)
 
-- Legacy-compatible:
-  - `sync`, `async`, `later(ticks)`, `timer(ticks, ticks)`
-- High-level:
-  - `later(delay, unit)` / `later(Duration)`
-  - `asyncLater(...)`
-  - `timer(delay, period, unit)` / `timer(Duration, Duration)`
-  - `asyncTimer(...)`
-- Chained handle:
-  - `onComplete`, `onCompleteSync`, `onCompleteAsync`
+지원 패턴:
+- `set(slot)`, `set(row, column)`, `set(listOf(...))`
+- `pattern(...)` + `set(symbol, ...)`
+- `fill`, `border`, `row`, `column`
+- `onOpen`, `onClose`, `onClick`
+- `state(key, value)`, `page(stateKey, stateValue)`, `pageDefault(stateKey)`
 
-### Bridge v2
+핵심 개념:
+- `state`: GUI 상태 저장소
+- `page`: state 값이 일치할 때만 렌더되는 조건부 레이어
+- `pageDefault`: 어떤 page도 매칭되지 않을 때 fallback 레이어
 
-- Backward compatible string API:
-  - `publish(channel: String, payload: String)`
-  - `subscribe(channel: String, ...)`
-- Typed/channel API:
-  - `BridgeChannel(namespace, key)`
-  - typed `publish/subscribe`
-  - source-aware subscribe path: `subscribeWithSource(...)` / typed incoming `BridgeIncomingMessage<T>`
-  - RPC `respond(...)`, `request(...)` with `BridgeResponseStatus`
-- Target-node RPC supported
-- Redis backend via Redisson (Libby runtime load), fallback to local mode on failure
+## Event + DI
 
-### Resources
+### STListener
 
-- Unified resource surface with provider-based degrade strategy
-- Vanilla + ItemsAdder + Oraxen + Nexo + MMOItems + EcoItems
-- Provider unavailable => capability OFF with reason
+```kotlin
+class JoinListener(plugin: MyPlugin) : STListener<MyPlugin>(plugin) {
+    @EventHandler
+    fun onJoin(event: PlayerJoinEvent) { }
+}
 
-## Config File Expectations
+listen<JoinListener>()
+```
 
-Auto-generated/normalized under `plugins/<Plugin>/config/`:
+### STEvent
 
-- `plugin.yml` (plugin ops config: version/debug)
+`STEvent`는 Bukkit `Event` 상속 커스텀 이벤트 베이스입니다.
+`HandlerList` companion 패턴을 반드시 지킵니다.
+
+### DI 자동 스캔
+
+- 스캔 루트: 플러그인 메인 클래스 패키지 루트
+- 대상: `@STComponent`
+- 주입: `@STInject` 생성자/필드
+- 실패 정책: 순환 의존/해결 불가 타입은 fail-fast
+
+## Scheduler (Hybrid)
+
+원칙:
+- 기존 Runnable 기반 API는 유지
+- 고수준 duration/unit API 추가
+- 결과 체인: `onComplete`, `onCompleteSync`, `onCompleteAsync`
+
+클래스로더 안정성 때문에, 런타임 핵심 시그니처에서 Kotlin 함수 타입 직접 노출을 피합니다.
+
+## Bridge v2
+
+기능:
+- string pub/sub (호환)
+- typed pub/sub (`BridgeCodec<T>`)
+- target-node RPC (`request/respond`)
+- 응답 상태: `SUCCESS`, `TIMEOUT`, `NO_HANDLER`, `ERROR`
+
+백엔드:
+- `LOCAL`, `REDIS`, `COMPOSITE`
+- Redisson 연결 실패 시 local fallback + capability reason 기록
+
+## Resource API
+
+통합 대상:
+- Vanilla, ItemsAdder, Oraxen, Nexo, MMOItems, EcoItems
+
+원칙:
+- provider 미설치/비활성 시 capability OFF + reason
+- API는 `resource.items()/blocks()/furnitures()` 공통 경로 우선
+
+## Translation / Text
+
+- `TextService`: MiniMessage 렌더링
+- `TranslationService`: locale fallback/키 조회/리로드
+- fallback 체인 기본: sender locale -> default locale -> en_us -> `!key!`
+- PlaceholderAPI는 선택 의존성
+
+## Config 파일 기대값
+
+기본 위치: `plugins/<Plugin>/config/`
+
+- `plugin.yml`
 - `storage.yml`
-- `depend.yml` (`loadDatabaseDrivers`, `loadRedisBridge`, integrations)
-- `bridge.yml` (`mode`, `namespace`, `nodeId`, timeout, redis settings)
+- `depend.yml`
+- `bridge.yml`
 - `translation.yml`
 
-And language bundles under `plugins/<Plugin>/translation/*.yml`.
+번역 번들은 `plugins/<Plugin>/translation/{locale}.yml`.
 
-## Capability Expectations (Important)
+STLib 운영 플러그인(`framework:core`)은 추가로 `config/stlib.yml`을 사용합니다.
 
-Expect and use these runtime keys:
+## Capability 키 (자주 보는 것)
 
-- Runtime: `runtime:scheduler`, `runtime:di`
-- Bridge: `bridge:local`, `bridge:distributed`, `bridge:rpc`, `bridge:codec`, `bridge:redis`
-- Text: `text:translation`, `text:notifier`, `text:placeholderapi`
-- Storage/Resource/Platform keys as defined in `CapabilityNames`
+- runtime: `runtime:scheduler`, `runtime:di`
+- bridge: `bridge:local`, `bridge:distributed`, `bridge:rpc`, `bridge:codec`, `bridge:redis`
+- text: `text:translation`, `text:notifier`, `text:placeholderapi`
+- ui: `ui:inventory`
 
-When adding feature flags, always set clear ON/OFF reasons.
+기능 degrade 시 항상 OFF reason을 함께 남깁니다.
 
-## Documentation Sync Rules
+## 리뷰 체크리스트 (SOLID 실무형)
 
-If behavior changes, update skill-local snapshot docs:
+- SRP: `STPlugin` helper를 무분별하게 늘리지 않았는가
+- OCP/DIP: 구현 상세(CommandAPI/Bukkit)를 `api`에 새지 않았는가
+- ISP: 외부 개발자가 쓰는 표면이 최소/직관적인가
+- 복잡도: 대체 가능한 pass-through 메서드를 중복 추가하지 않았는가
+- 안전성: onLoad/onEnable/onDisable 경계에서 side effect가 분리됐는가
 
-- `references/docs-api/README.md`
-- `references/docs-api/stplugin.md`
-- `references/docs-api/services.md`
-- `references/docs-api/runtime.md`
-- `references/docs-api/config-files.md`
-- `references/docs-api/events.md`
-- `references/docs-api/storage.md`
-- `references/docs-api/resources.md`
-- `references/docs-api/translation.md`
+## 문서 동기화 규칙
 
-## Verification Matrix
+공개 동작이 바뀌면 최소 아래 2개는 반드시 갱신:
 
-Run minimal-first, then expand:
+- `README.md`
+- `.agents/skills/stlib/SKILL.md`
+
+필요 시 함께 갱신:
+- `.agents/skills/stlib/references/docs-api/*.md`
+
+## 최소 검증 매트릭스
 
 ```bash
 ./gradlew :framework:api:test
 ./gradlew :framework:bukkit:test
 ./gradlew :framework:core:test
-./gradlew :framework:kernel:compileKotlin :framework:core:compileKotlin
 ```
 
-For packaging smoke:
+패키징 스모크:
 
 ```bash
 ./gradlew build
 ```
-
-For consumer sample:
-
-```bash
-./gradlew -PincludeExamples=true :stlib-example-consumer:build
-```
-
-## Implementation Do/Don't
-
-Do:
-
-- Add thin wrappers over existing contracts rather than parallel frameworks.
-- Prefer deterministic migration paths for configs (`VersionedConfig + configMigrationPlan`).
-- Keep STPlugin ergonomic for external plugin authors.
-
-Don't:
-
-- Put platform types into `framework:api`.
-- Break existing STPlugin helper semantics without explicit migration.
-- Add hidden side effects in lifecycle hooks.
-- Skip capability updates when degrade/fallback happened.

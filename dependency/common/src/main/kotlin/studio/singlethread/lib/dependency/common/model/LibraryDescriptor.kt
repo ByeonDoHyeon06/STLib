@@ -6,6 +6,7 @@ data class LibraryDescriptor(
     val version: String,
     val repositories: List<RepositoryDescriptor> = emptyList(),
     val relocations: Map<String, String> = emptyMap(),
+    val resolveTransitives: Boolean = true,
     val isolated: Boolean = false,
     val id: String? = null,
 )

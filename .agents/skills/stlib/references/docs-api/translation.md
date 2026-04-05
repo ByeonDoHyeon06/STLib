@@ -1,7 +1,9 @@
 # 번역/i18n API
 
 STLib는 `TextService`와 분리된 `TranslationService`를 제공합니다.
-명령 메타 번역에는 `CommandTranslationService`를 함께 사용할 수 있습니다.
+
+- `TextService`: MiniMessage 렌더링
+- `TranslationService`: 키 조회/fallback/reload
 
 ## 핵심 계약
 
@@ -14,14 +16,6 @@ interface TranslationService {
     ): String
 
     fun reload()
-}
-
-enum class CommandTranslationField { DESCRIPTION, USAGE }
-
-interface CommandTranslationService {
-    fun key(commandName: String, field: CommandTranslationField): String
-    fun description(commandName: String, locale: String? = null): String?
-    fun usage(commandName: String, locale: String? = null): String?
 }
 ```
 
@@ -57,11 +51,18 @@ fallbackLocale: ""
 - `translate(sender, key, placeholders)`
 - `sendTranslated(sender, key, placeholders)`
 - `reloadTranslations()`
-- `commandDescription(commandName, locale, fallback)`
-- `commandUsage(commandName, locale, fallback)`
-- `commandTranslated(name, permission, executor)`
 
 번역 문자열은 MiniMessage로 파싱되어 `Component`로 전송됩니다.
 
-`commandTranslated("stxtr", ...)`는 기본적으로
-`command.stxtr.description` 키를 조회해 명령 설명으로 사용합니다.
+## 예시
+
+```kotlin
+override fun enable() {
+    command("hello") {
+        executes { ctx ->
+            val sender = ctx.sender as? org.bukkit.command.CommandSender ?: return@executes
+            sendTranslated(sender, "example.welcome", mapOf("player" to sender.name))
+        }
+    }
+}
+```

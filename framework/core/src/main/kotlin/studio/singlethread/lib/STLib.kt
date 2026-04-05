@@ -1,6 +1,9 @@
 package studio.singlethread.lib
 
-import org.bukkit.entity.Player
+import org.bukkit.event.EventHandler
+import org.bukkit.event.Listener
+import org.bukkit.event.server.ServerLoadEvent
+import studio.singlethread.lib.command.StlibCommandInstaller
 import studio.singlethread.lib.command.StlibOpenGuiCommand
 import studio.singlethread.lib.command.StlibReloadCommand
 import studio.singlethread.lib.command.StlibReloadSnapshot
@@ -14,21 +17,31 @@ import studio.singlethread.lib.dashboard.StlibDashboardService
 import studio.singlethread.lib.dashboard.StlibStorageCapabilityPolicy
 import studio.singlethread.lib.dashboard.StlibStatsStore
 import studio.singlethread.lib.framework.api.kernel.service
-import studio.singlethread.lib.framework.api.command.CommandTree
 import studio.singlethread.lib.framework.bukkit.bridge.BridgeRuntimeInfo
 import studio.singlethread.lib.framework.bukkit.gui.openInventory
 import studio.singlethread.lib.framework.bukkit.lifecycle.STPlugin
+import studio.singlethread.lib.framework.bukkit.version.BukkitRuntimeResolver
+import studio.singlethread.lib.framework.bukkit.version.BukkitServerVersionResolver
 import studio.singlethread.lib.health.StlibHealthSnapshotAssembler
 import studio.singlethread.lib.ui.StlibDashboardMenuItemFactory
 import studio.singlethread.lib.ui.StlibDashboardNavigator
 import studio.singlethread.lib.lifecycle.StlibLifecycleLogger
+import studio.singlethread.lib.lifecycle.StlibRuntimeConfigController
+import studio.singlethread.lib.lifecycle.StlibRuntimeSummaryLogger
 import studio.singlethread.lib.platform.common.capability.CapabilityNames
-import java.nio.file.Files
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicBoolean
 
 class STLib : STPlugin() {
+    private val runtimeSummaryLogger =
+        StlibRuntimeSummaryLogger(
+            allPlugins = ::allPlugins,
+            resolveVersion = { BukkitServerVersionResolver.resolve(server) },
+            resolveRuntime = { BukkitRuntimeResolver.resolve(server) },
+            logInfo = logger::info,
+        )
     private val lifecycleLogger = StlibLifecycleLogger(::translated, logger::info)
     private val statusCommand = StlibStatusCommand(translate = ::translated, logInfo = logger::info)
     private val reloadCommand =
@@ -122,71 +135,67 @@ class STLib : STPlugin() {
             flushPeriodTicks = ::flushIntervalTicks,
         )
     }
+    private val commandInstaller by lazy {
+        StlibCommandInstaller(
+            register = ::command,
+            translate = { key -> translation.translate(key) },
+            statusCommand = statusCommand,
+            reloadCommand = reloadCommand,
+            openGuiCommand = openGuiCommand,
+            runtimeSnapshot = runtimeSnapshotAssembler::snapshot,
+        )
+    }
+    private val runtimeConfigController by lazy {
+        StlibRuntimeConfigController(
+            registerRuntimeConfig = {
+                registerConfig(
+                    fileName = "stlib",
+                    migrationPlan = StlibRuntimeConfigMigration.plan,
+                )
+            },
+            reloadRuntimeConfig = {
+                reloadConfig(
+                    fileName = "stlib",
+                    migrationPlan = StlibRuntimeConfigMigration.plan,
+                )
+            },
+            reloadAllConfigs = ::reloadAllConfigs,
+            saveRuntimeConfig = { value -> saveConfig(fileName = "stlib", value = value) },
+            reloadTranslations = ::reloadTranslations,
+            configureCommandMetrics = ::configureCommandMetrics,
+            configPath = ::configPath,
+            logInfo = logger::info,
+            logWarning = logger::warning,
+        )
+    }
     private val displayZone = ZoneId.systemDefault()
     private val displayTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-    private lateinit var runtimeConfig: StlibRuntimeConfig
+    private val runtimeSummaryLogged = AtomicBoolean(false)
+    private val runtimeConfig: StlibRuntimeConfig
+        get() = runtimeConfigController.current()
 
     override fun initialize() {
         lifecycleLogger.initialize()
-        runtimeConfig =
-            registerConfig(
-                fileName = "stlib",
-                migrationPlan = StlibRuntimeConfigMigration.plan,
-            )
-        normalizeRuntimeConfig()
-        applyRuntimeSwitches()
-        cleanupLegacyStatsFile()
+        runtimeConfigController.initialize()
         dashboardRuntimeController.initialize()
 
     }
-
     override fun load() {
         lifecycleLogger.loadComplete()
     }
-
     override fun enable() {
-        command("stlib", CommandTree { root ->
-            with(root) {
-                permission = "stlib.command"
-                description = translation.translate("command.stlib.description")
-                literal("reload") {
-                    permission = "stlib.command.reload"
-                    executes { context ->
-                        reloadCommand.execute(context)
-                    }
-                }
-                executes { context ->
-                    statusCommand.execute(context, runtimeSnapshotAssembler.snapshot())
-                }
-            }
-        })
-        command("stlibgui", CommandTree { root ->
-            with(root) {
-                permission = "stlib.command.gui"
-                description = translation.translate("command.stlibgui.description")
-                executes { context ->
-                    openGuiCommand.execute(
-                        context = context,
-                        player = context.audience as? Player,
-                    )
-                }
-            }
-        })
-
+        commandInstaller.install()
+        registerRuntimeSummaryHook()
         dashboardRuntimeController.start()
         lifecycleLogger.enabled()
     }
-
     override fun disable() {
         dashboardRuntimeController.stop()
-        configureCommandMetrics(false)
+        runtimeConfigController.shutdown()
         lifecycleLogger.disabled()
     }
 
-    private fun translated(
-        key: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ): String {
+    private fun translated(key: String, placeholders: Map<String, String> = emptyMap()): String {
         return translation.translate(key = key, placeholders = placeholders)
     }
 
@@ -197,56 +206,14 @@ class STLib : STPlugin() {
         return translated("stlib.gui.feedback.dashboard_unavailable", emptyMap())
     }
 
-    private fun normalizeRuntimeConfig() {
-        val dashboard = runtimeConfig.dashboard
-        var changed = false
-
-        val normalizedProfile = normalizeDashboardProfile(dashboard.profile)
-        if (dashboard.profile != normalizedProfile) {
-            dashboard.profile = normalizedProfile
-            changed = true
-        }
-
-        val normalizedInterval = dashboard.flushIntervalSeconds.coerceIn(minimumValue = 5, maximumValue = 3_600)
-        if (dashboard.flushIntervalSeconds != normalizedInterval) {
-            dashboard.flushIntervalSeconds = normalizedInterval
-            changed = true
-        }
-
-        if (!changed) {
-            return
-        }
-        saveConfig(fileName = "stlib", value = runtimeConfig)
-    }
-
-    private fun normalizeDashboardProfile(rawProfile: String): String {
-        return when (rawProfile.trim().lowercase()) {
-            DASHBOARD_PROFILE_CORE_OPS -> DASHBOARD_PROFILE_CORE_OPS
-            else -> DASHBOARD_PROFILE_CORE_OPS
-        }
-    }
-
-    private fun applyRuntimeSwitches() {
-        configureCommandMetrics(runtimeConfig.metrics.command.enabled)
-    }
-
     private fun flushIntervalTicks(): Long {
-        return runtimeConfig.dashboard.flushIntervalSeconds.toLong() * TICKS_PER_SECOND
+        return runtimeConfigController.flushIntervalTicks(ticksPerSecond = TICKS_PER_SECOND)
     }
 
     private fun reloadRuntime(): StlibReloadSnapshot {
-        val reloaded = reloadAllConfigs()
-        runtimeConfig =
-            reloadConfig(
-                fileName = "stlib",
-                migrationPlan = StlibRuntimeConfigMigration.plan,
-            )
-        normalizeRuntimeConfig()
-        applyRuntimeSwitches()
-        reloadTranslations()
+        val runtimeReload = runtimeConfigController.reload()
 
         dashboardRuntimeController.stop()
-        cleanupLegacyStatsFile()
         dashboardRuntimeController.initialize()
         dashboardRuntimeController.start()
         val healthSnapshot = healthSnapshotProvider.snapshot()
@@ -254,7 +221,7 @@ class STLib : STPlugin() {
         val diSummary = diComponentSummary()
 
         return StlibReloadSnapshot(
-            reloadedConfigCount = reloaded.size,
+            reloadedConfigCount = runtimeReload.reloadedConfigCount,
             dashboardAvailable = healthSnapshot.dashboardAvailable,
             dashboardProfile = healthSnapshot.dashboardProfile,
             persistenceEnabled = healthSnapshot.persistenceEnabled,
@@ -270,19 +237,31 @@ class STLib : STPlugin() {
         )
     }
 
-    private fun cleanupLegacyStatsFile() {
-        val legacyPath = configPath("stplugin-stats")
-        if (!Files.exists(legacyPath)) {
+    private fun registerRuntimeSummaryHook() {
+        val listener =
+            object : Listener {
+                @EventHandler
+                fun onServerLoad(event: ServerLoadEvent) {
+                    if (event.type != ServerLoadEvent.LoadType.STARTUP) {
+                        return
+                    }
+                    logRuntimeSummary()
+                    unlisten(this)
+                }
+            }
+        listen(listener)
+        // Fallback for late-enable cases where STARTUP event already passed.
+        later(1L, Runnable {
+            logRuntimeSummary()
+            unlisten(listener)
+        })
+    }
+
+    private fun logRuntimeSummary() {
+        if (!runtimeSummaryLogged.compareAndSet(false, true)) {
             return
         }
-
-        runCatching {
-            Files.deleteIfExists(legacyPath)
-        }.onSuccess {
-            logger.info("Removed legacy dashboard stats file ${legacyPath.fileName}; stats are now stored in Storage backend")
-        }.onFailure { error ->
-            logger.warning("Legacy stats file exists but could not be removed (${legacyPath.fileName}): ${error.message}")
-        }
+        runtimeSummaryLogger.print()
     }
 
     private fun formatInstant(value: Instant?): String {
@@ -295,6 +274,5 @@ class STLib : STPlugin() {
     private companion object {
         private const val TICKS_PER_SECOND = 20L
         private const val DASHBOARD_STATS_COLLECTION = "stlib_dashboard_stats"
-        private const val DASHBOARD_PROFILE_CORE_OPS = "core_ops"
     }
 }

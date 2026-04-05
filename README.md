@@ -4,11 +4,18 @@ STLib는 Bukkit/Paper/Folia 기반 Kotlin 플러그인을 빠르게 개발하기
 
 핵심 목표:
 - 일관된 라이프사이클 (`onLoad -> initialize -> load -> onEnable -> enable -> onDisable -> disable`)
-- CommandAPI 기반 트리 DSL
+- CommandAPI Thin Wrapper 기반 트리 DSL
 - 통합 Resource API (Vanilla / ItemsAdder / Oraxen / Nexo / MMOItems / EcoItems)
 - Storage 추상화 (json/sqlite/mysql/postgresql)
 - MiniMessage + Translation + 선택적 PlaceholderAPI
-- 운영 관제 (`/stlib`, `/stlibgui`)
+- 운영 관제 (`/stlib`, `/stlib reload`, `/stlibgui`)
+
+## 모듈 구조
+
+- `framework:api`: 플랫폼 비종속 계약(명령/이벤트/스케줄러/브리지/DI 등)
+- `framework:kernel`: 순수 엔진/서비스 레지스트리/Capability 코어
+- `framework:bukkit`: Bukkit/Paper/Folia 구현체
+- `framework:core`: STLib 운영 플러그인 코어(명령/대시보드/헬스)
 
 ## 빠른 시작
 
@@ -38,11 +45,26 @@ class ExamplePlugin : STPlugin(version = "1.0.0") {
 
 `version`은 `config/plugin.yml`의 `version`이 비어 있을 때 fallback으로 사용됩니다.
 
+### 1-1) 로드 배너(ASCII Art) 커스터마이징
+
+배너는 공통 `STPlugin`이 아니라 `STLib`에서만 출력됩니다.
+즉, STLib 운영 플러그인의 타이틀 아트만 수정하면 됩니다.
+
+```kotlin
+class STLib : STPlugin() {
+    protected fun stlibTitleAsciiArt(): List<String> {
+        return listOf(/* your title art lines */)
+    }
+}
+```
+
+`framework/core/src/main/kotlin/studio/singlethread/lib/STLib.kt`의 `stlibTitleAsciiArt()`만 수정하면 됩니다.
+
 ### 2) 자동 생성되는 기본 설정 파일
 
 플러그인 최초 실행 시 `plugins/<PluginName>/config/` 아래 파일이 자동 생성됩니다.
 
-- `plugin.yml` (플러그인 운영 설정)
+- `plugin.yml` (플러그인 운영 설정: 버전/디버그)
 - `storage.yml` (스토리지 백엔드/연결 설정)
 - `depend.yml` (외부 연동/런타임 의존 로딩 설정)
 - `bridge.yml` (브리지 모드/노드/타임아웃/redis 설정)
@@ -54,6 +76,10 @@ class ExamplePlugin : STPlugin(version = "1.0.0") {
 version: "1.0.0"
 debug: false
 ```
+
+참고:
+- 설정 클래스에는 `@Comment` 기반 주석이 포함되어 있습니다.
+- 기존 파일에 주석이 없는 경우, 과거에 생성된 파일일 수 있습니다(필요 시 백업 후 재생성).
 
 ## Command DSL (v3)
 
@@ -94,16 +120,33 @@ override fun enable() {
 }
 ```
 
+동적 탭완성 예시:
+
+```kotlin
+command("warp") {
+    literal("go") {
+        string(
+            name = "name",
+            dynamicSuggestions = { _ -> listOf("spawn", "shop", "pvp") },
+        )
+        executes { ctx ->
+            ctx.reply("warp: ${ctx.stringArgument("name")}")
+        }
+    }
+}
+```
+
 클래스형(플러그인 주입)도 지원합니다.
 
 ```kotlin
+import studio.singlethread.lib.framework.api.command.CommandDslBuilder
 import studio.singlethread.lib.framework.api.command.STCommand
 
 class TestCommand(plugin: ExamplePlugin) : STCommand<ExamplePlugin>(plugin) {
     override val name = "test"
     override val permission = "example.command.test"
 
-    override fun build(builder: studio.singlethread.lib.framework.api.command.CommandDslBuilder) {
+    override fun build(builder: CommandDslBuilder) {
         builder.literal("show") {
             string("x")
             string("y")
@@ -121,20 +164,100 @@ override fun enable() {
 }
 ```
 
-동적 탭완성 예시:
+Bukkit 타입 인자 헬퍼는 확장 함수로 제공합니다.
 
 ```kotlin
-command("warp") {
-    literal("go") {
-        string(
-            name = "name",
-            dynamicSuggestions = { _ -> listOf("spawn", "shop", "pvp") },
-        )
-        executes { ctx ->
-            ctx.reply("warp: ${ctx.stringArgument("name")}")
-        }
+import studio.singlethread.lib.framework.bukkit.command.playerArgument
+import studio.singlethread.lib.framework.bukkit.command.worldArgument
+
+command("tpwhere") {
+    player("target")
+    world("world")
+    executes { ctx ->
+        val target = ctx.playerArgument("target") ?: return@executes
+        val world = ctx.worldArgument("world") ?: return@executes
+        ctx.reply("target=${target.name}, world=${world.name}")
     }
 }
+```
+
+## Event + DI
+
+### 1) STListener(플러그인 주입형) 등록/해제
+
+```kotlin
+import org.bukkit.event.EventHandler
+import org.bukkit.event.player.PlayerJoinEvent
+import studio.singlethread.lib.framework.bukkit.event.STListener
+
+class JoinListener(plugin: ExamplePlugin) : STListener<ExamplePlugin>(plugin) {
+    @EventHandler
+    fun onJoin(event: PlayerJoinEvent) {
+        event.player.sendMessage("welcome from ${plugin.name}")
+    }
+}
+
+override fun enable() {
+    listen<JoinListener>()
+    // 또는 listen(JoinListener(this))
+}
+```
+
+### 2) DI 자동 스캔 (`@STComponent` / `@STInject`)
+
+```kotlin
+import studio.singlethread.lib.framework.api.di.STComponent
+import studio.singlethread.lib.framework.api.di.STInject
+import studio.singlethread.lib.framework.api.di.STScope
+import studio.singlethread.lib.framework.bukkit.event.STListener
+
+@STComponent(scope = STScope.SINGLETON)
+class WelcomeService {
+    fun line(name: String) = "Welcome, $name"
+}
+
+@STComponent
+class JoinListener @STInject constructor(
+    plugin: ExamplePlugin,
+    private val welcomeService: WelcomeService,
+) : STListener<ExamplePlugin>(plugin) {
+    @org.bukkit.event.EventHandler
+    fun onJoin(event: org.bukkit.event.player.PlayerJoinEvent) {
+        event.player.sendMessage(welcomeService.line(event.player.name))
+    }
+}
+
+override fun enable() {
+    listen<JoinListener>()
+    val service = component<WelcomeService>()
+}
+```
+
+DI 규칙:
+- 생성자 주입 기본 (`@STInject` 생성자 우선)
+- `@STInject` 필드 주입 지원 (`var`만 가능)
+- 스코프: `SINGLETON` / `PROTOTYPE`
+- 순환 의존/해결 불가 타입은 onLoad에서 fail-fast
+
+### 3) ST 커스텀 이벤트 발행
+
+```kotlin
+import org.bukkit.event.HandlerList
+import studio.singlethread.lib.framework.bukkit.event.STEvent
+
+class ExampleEvent(val value: String) : STEvent() {
+    companion object {
+        @JvmStatic
+        private val HANDLERS = HandlerList()
+
+        @JvmStatic
+        fun getHandlerList(): HandlerList = HANDLERS
+    }
+
+    override fun getHandlers(): HandlerList = HANDLERS
+}
+
+// fire(ExampleEvent("hello"))
 ```
 
 ## GUI DSL (Unified)
@@ -160,6 +283,7 @@ val complex = gui(rows = 3, title = "<gray>Complex</gray>") {
         "#   S   #",
         "#########",
     )
+
     set('#', ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)) { it.event.isCancelled = true }
     set('S', ItemStack(Material.PLAYER_HEAD)) { it.event.isCancelled = true }
 }
@@ -172,9 +296,12 @@ val dropper = gui(title = mini("<gray>Dropper</gray>"), size = 9, type = Invento
 player.openInventory(dropper)
 ```
 
+상태 기반 뷰 전환(`page`) 예시:
+
 ```kotlin
 val routed = gui(rows = 6, title = "<gold>Plugins</gold>") {
     state("view", "list")
+
     pattern(
         "#########",
         "#       #",
@@ -187,7 +314,6 @@ val routed = gui(rows = 6, title = "<gold>Plugins</gold>") {
 
     page(stateKey = "view", stateValue = "list") {
         set(10, ItemStack(Material.PAPER))
-        set(11, ItemStack(Material.PAPER))
         set(49, ItemStack(Material.BOOK)) { click ->
             click.state("view", "detail")
             click.refresh()
@@ -205,87 +331,7 @@ val routed = gui(rows = 6, title = "<gold>Plugins</gold>") {
 player.openInventory(routed)
 ```
 
-## Event 사용
-
-### 1) STListener(플러그인 주입형) 등록/해제
-
-```kotlin
-import org.bukkit.event.EventHandler
-import org.bukkit.event.player.PlayerJoinEvent
-import studio.singlethread.lib.framework.bukkit.event.STListener
-
-class JoinListener(plugin: ExamplePlugin) : STListener<ExamplePlugin>(plugin) {
-    @EventHandler
-    fun onJoin(event: PlayerJoinEvent) {
-        event.player.sendMessage("welcome from ${plugin.name}")
-    }
-}
-
-override fun enable() {
-    listen<JoinListener>() // reflection + constructor DI
-    // or: listen(JoinListener(this))  // org.bukkit.event.Listener only (type-safe)
-}
-```
-
-### 2) DI 자동 스캔 (`@STComponent` / `@STInject`)
-
-STLib는 플러그인 메인 클래스 패키지 루트를 자동 스캔해 `@STComponent`를 검증/조립합니다.
-그래프가 깨져 있으면 onLoad에서 fail-fast 됩니다.
-
-```kotlin
-import studio.singlethread.lib.framework.api.di.STComponent
-import studio.singlethread.lib.framework.api.di.STInject
-import studio.singlethread.lib.framework.api.di.STScope
-import studio.singlethread.lib.framework.bukkit.event.STListener
-
-@STComponent(scope = STScope.SINGLETON)
-class WelcomeService {
-    fun line(name: String) = "Welcome, $name"
-}
-
-@STComponent
-class JoinListener @STInject constructor(
-    plugin: ExamplePlugin,
-    private val welcomeService: WelcomeService,
-) : STListener<ExamplePlugin>(plugin) {
-    @org.bukkit.event.EventHandler
-    fun onJoin(event: org.bukkit.event.player.PlayerJoinEvent) {
-        event.player.sendMessage(welcomeService.line(event.player.name))
-    }
-}
-
-override fun enable() {
-    listen<JoinListener>()          // DI 생성 + 등록
-    val service = component<WelcomeService>() // 직접 resolve도 가능
-}
-```
-
-DI 규칙:
-- 생성자 주입 기본 (`@STInject` 생성자 우선)
-- `@STInject` 필드 주입 지원 (`var`만 가능)
-- 스코프: `SINGLETON` / `PROTOTYPE`
-- 순환 의존/해결 불가 타입은 명확한 예외로 실패
-
-### 3) ST 커스텀 이벤트 발행
-
-```kotlin
-import org.bukkit.event.HandlerList
-import studio.singlethread.lib.framework.bukkit.event.STEvent
-
-class ExampleEvent(val value: String) : STEvent() {
-    companion object {
-        @JvmStatic
-        private val HANDLERS = HandlerList()
-
-        @JvmStatic
-        fun getHandlerList(): HandlerList = HANDLERS
-    }
-
-    override fun getHandlers(): HandlerList = HANDLERS
-}
-
-// fire(ExampleEvent(...))
-```
+`page`는 “페이지네이션” 전용이 아니라, 상태값(`state`)에 따라 활성 블루프린트를 전환하는 조건부 레이어입니다.
 
 ## Scheduler (Hybrid)
 
@@ -307,18 +353,6 @@ override fun enable() {
     // async delay
     asyncLater(Duration.ofSeconds(2), Runnable { debug("async delayed") })
         .onCompleteAsync { result -> debug("async complete=${result.status}") }
-
-    // repeating task
-    val repeating =
-        asyncTimer(
-            delay = 1,
-            period = 5,
-            unit = TimeUnit.SECONDS,
-            task = Runnable { debug("repeat tick") },
-        )
-
-    // 원하는 시점에 취소
-    later(Duration.ofSeconds(20), Runnable { repeating.cancel() })
 }
 ```
 
@@ -344,29 +378,17 @@ private val stringCodec =
 override fun enable() {
     val channel = bridgeChannel("example", "chat")
 
-    // typed subscribe
     subscribe(channel, stringCodec) { payload ->
         debug("received: $payload")
     }
 
-    // source-aware typed subscribe (BridgeService direct)
-    bridge.subscribe(channel, stringCodec) { incoming ->
-        debug("from=${incoming.sourceNode.value}, payload=${incoming.payload}")
-    }
-
-    // typed publish
     publish(channel, "hello-bridge", stringCodec)
 
-    // RPC responder
     respond(channel, stringCodec, stringCodec) { request ->
-        if (request.payload == "ping") {
-            BridgeRequestResult.success("pong")
-        } else {
-            BridgeRequestResult.error("unknown request")
-        }
+        if (request.payload == "ping") BridgeRequestResult.success("pong")
+        else BridgeRequestResult.error("unknown request")
     }
 
-    // RPC requester
     request(channel, "ping", stringCodec, stringCodec).thenAccept { response ->
         when (response.status) {
             BridgeResponseStatus.SUCCESS -> debug("rpc=${response.payload}")
@@ -385,7 +407,7 @@ override fun enable() {
 
 Redis 연결 실패 시 local로 자동 degrade됩니다.
 
-## Text / Translation
+## Text / Translation / PlaceholderAPI
 
 ```kotlin
 override fun enable() {
@@ -399,9 +421,11 @@ override fun enable() {
 }
 ```
 
-메모:
-- `STPlugin`은 notifier pass-through(`tell`, `announce`, `actionBar`, `title`, `send`, `console`)를 제공하지 않습니다.
-- 메시징은 `notifier` 서비스(`send`, `sendPrefixed`, `actionBar`, `title`)를 직접 사용합니다.
+메시징 가이드:
+- 간단 사용: `send(sender, "<mini>...")`, `console("<mini>...")`
+- 고급 사용: `notifier.send`, `notifier.sendPrefixed`, `notifier.actionBar`, `notifier.title`
+
+`depend.yml`에서 PlaceholderAPI 연동이 활성화되어 있고 플러그인이 설치된 경우, `mini(sender, ...)` 경로에서 플레이스홀더를 사용할 수 있습니다.
 
 ## Storage
 
@@ -437,7 +461,7 @@ override fun enable() {
 }
 ```
 
-기본 원칙:
+원칙:
 - 비동기 API 우선 사용
 - 메인 스레드에서 sync 호출 남용 금지
 
@@ -459,15 +483,16 @@ override fun enable() {
 
 대표 메서드:
 - `from(...)`: ID 또는 게임 오브젝트 -> 참조 객체 역매핑
-- `create(...)`: 참조/ID -> 실제 아이템 생성
+- `create(...)`: 참조/ID -> 실제 오브젝트 생성
 - `displayName(...)`, `icon(...)`, `ids()`, `exists(...)`
 
 ## 운영 명령
 
-- `/stlib` : STLib 런타임 상태
-- `/stlib reload` : 설정/번역/관제 리로드
-- `/stlibgui` : STPlugin Core Ops 대시보드
+- `/stlib`: STLib 런타임 상태
+- `/stlib reload`: 설정/번역/관제 리로드
+- `/stlibgui`: STPlugin Core Ops 대시보드
 
 ## 참고
 
-현재 저장소는 빠르게 진화 중이라, API 변경 시 README 예제가 먼저 갱신될 수 있습니다.
+빠르게 진화하는 저장소라 API 변경 시 README 예제가 먼저 갱신될 수 있습니다.
+실사용 전에는 각 모듈 테스트(`:framework:api`, `:framework:bukkit`, `:framework:core`)를 같이 확인하는 것을 권장합니다.

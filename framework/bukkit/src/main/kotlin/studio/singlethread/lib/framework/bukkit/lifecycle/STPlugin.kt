@@ -61,6 +61,9 @@ import studio.singlethread.lib.framework.bukkit.resource.BukkitResourceIntegrati
 import studio.singlethread.lib.framework.bukkit.support.PluginConventions
 import studio.singlethread.lib.framework.bukkit.text.BukkitTextParser
 import studio.singlethread.lib.framework.bukkit.translation.BukkitTranslationFacade
+import studio.singlethread.lib.framework.bukkit.lifecycle.support.CachedServicePropertyDelegate
+import studio.singlethread.lib.framework.bukkit.lifecycle.support.PluginCompatibilityVerifier
+import studio.singlethread.lib.framework.bukkit.lifecycle.support.PluginLoadRuntimeCoordinator
 import studio.singlethread.lib.framework.bukkit.version.BukkitRuntimeResolver
 import studio.singlethread.lib.framework.bukkit.version.BukkitServerVersionResolver
 import studio.singlethread.lib.framework.bukkit.version.SupportedBukkitRuntimes
@@ -79,7 +82,6 @@ import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
-import kotlin.reflect.KProperty
 
 @Suppress("DEPRECATION")
 abstract class STPlugin(
@@ -183,7 +185,6 @@ abstract class STPlugin(
             .ifBlank { description.version.trim() }
             .ifBlank { "unknown" }
     }
-
 
     protected fun mini(message: String, placeholders: Map<String, String> = emptyMap()): Component {
         return bukkitTextParser.parse(message, placeholders)
@@ -567,11 +568,7 @@ abstract class STPlugin(
         name: String,
         tree: CommandTree,
     ) {
-        registerCommandWithMetrics(
-            commandDsl(name) {
-                tree.define(this)
-            },
-        )
+        registerCommandWithMetrics(commandDsl(name, tree))
     }
 
     protected fun command(command: STCommand<*>) {
@@ -723,8 +720,8 @@ abstract class STPlugin(
         logger.info("[debug] $message")
     }
 
-    private fun <T> required(resolve: () -> T): RequiredService<T> {
-        return RequiredService(resolve)
+    private fun <T> required(resolve: () -> T): CachedServicePropertyDelegate<T> {
+        return CachedServicePropertyDelegate(resolve)
     }
 
     private fun eventCaller(): BukkitEventCaller {
@@ -804,25 +801,30 @@ abstract class STPlugin(
     }
 
     private fun prepareLoadRuntime(): Boolean {
-        if (!loadCommandApi()) {
-            logger.severe("Skipping plugin initialize/load because CommandAPI load failed")
-            return false
-        }
-        if (!registerCoreServices()) {
-            logger.severe("Skipping plugin initialize/load because default service registration failed")
-            return false
-        }
-        if (!bootstrapKernel()) {
-            logger.severe("Skipping plugin initialize/load because kernel bootstrap failed")
-            return false
-        }
-        if (!bootstrapComponentGraph()) {
-            logger.severe("Skipping plugin initialize/load because DI component scan failed")
-            return false
-        }
-        refreshRuntimeLoggingSwitches()
-        syncCapabilitySummary()
-        return true
+        return PluginLoadRuntimeCoordinator(
+            loadCommandApi =
+                PluginLoadRuntimeCoordinator.Step(
+                    run = ::loadCommandApi,
+                    onFailure = { logger.severe("Skipping plugin initialize/load because CommandAPI load failed") },
+                ),
+            registerCoreServices =
+                PluginLoadRuntimeCoordinator.Step(
+                    run = ::registerCoreServices,
+                    onFailure = { logger.severe("Skipping plugin initialize/load because default service registration failed") },
+                ),
+            bootstrapKernel =
+                PluginLoadRuntimeCoordinator.Step(
+                    run = ::bootstrapKernel,
+                    onFailure = { logger.severe("Skipping plugin initialize/load because kernel bootstrap failed") },
+                ),
+            bootstrapComponentGraph =
+                PluginLoadRuntimeCoordinator.Step(
+                    run = ::bootstrapComponentGraph,
+                    onFailure = { logger.severe("Skipping plugin initialize/load because DI component scan failed") },
+                ),
+            refreshRuntimeLoggingSwitches = ::refreshRuntimeLoggingSwitches,
+            syncCapabilitySummary = ::syncCapabilitySummary,
+        ).prepare()
     }
 
     private fun loadCommandApi(): Boolean {
@@ -950,72 +952,20 @@ abstract class STPlugin(
     }
 
     private fun verifyServerCompatibility(): Boolean {
-        if (!verifyMinecraftVersionCompatibility()) {
-            return false
-        }
-        return verifyBukkitRuntimeCompatibility()
-    }
-
-    private fun verifyMinecraftVersionCompatibility(): Boolean {
-        val policy = minecraftVersions()
-        val resolved = BukkitServerVersionResolver.resolve(server)
-        val serverVersion = resolved.resolved
-
-        if (serverVersion == null) {
-            logger.warning(
-                "Unable to resolve minecraft version for '${description.name}'. " +
-                    "Skipping compatibility gate. Candidates=${resolved.candidates}",
+        val compatibilityVerifier =
+            PluginCompatibilityVerifier(
+                logger = logger,
+                pluginName = description.name,
+                pluginVersion = pluginVersion(),
             )
-            return true
-        }
-
-        if (policy.isSupported(serverVersion)) {
-            return true
-        }
-
-        val baseMessage =
-            "Unsupported minecraft version '$serverVersion' for '${description.name}' v${pluginVersion()}. " +
-                "Supported versions: ${policy.describe()}"
-
-        return when (minecraftMismatchAction()) {
-            UnsupportedServerVersionAction.WARN_ONLY -> {
-                logger.warning(baseMessage)
-                true
-            }
-
-            UnsupportedServerVersionAction.DISABLE_PLUGIN -> {
-                logger.severe("$baseMessage. Plugin will remain disabled.")
-                false
-            }
-        }
-    }
-
-    private fun verifyBukkitRuntimeCompatibility(): Boolean {
-        val policy = supportedRuntimes()
-        if (policy.isAny()) {
-            return true
-        }
-
-        val resolved = BukkitRuntimeResolver.resolve(server)
-        if (policy.isSupported(resolved.runtime)) {
-            return true
-        }
-
-        val baseMessage =
-            "Unsupported bukkit runtime '${resolved.runtime.name.lowercase()}' for '${description.name}' v${pluginVersion()}. " +
-                "Supported runtimes: ${policy.describe()} (hints=${resolved.hints})"
-
-        return when (runtimeMismatchAction()) {
-            UnsupportedServerVersionAction.WARN_ONLY -> {
-                logger.warning(baseMessage)
-                true
-            }
-
-            UnsupportedServerVersionAction.DISABLE_PLUGIN -> {
-                logger.severe("$baseMessage. Plugin will remain disabled.")
-                false
-            }
-        }
+        return compatibilityVerifier.verify(
+            minecraftPolicy = minecraftVersions(),
+            minecraftResolution = BukkitServerVersionResolver.resolve(server),
+            minecraftMismatchAction = minecraftMismatchAction(),
+            runtimePolicy = supportedRuntimes(),
+            runtimeResolution = BukkitRuntimeResolver.resolve(server),
+            runtimeMismatchAction = runtimeMismatchAction(),
+        )
     }
 
     private fun descriptor(): STPluginDescriptor {
@@ -1039,14 +989,6 @@ abstract class STPlugin(
         @JvmStatic
         fun plugin(name: String): STPluginSnapshot? {
             return STPlugins.find(name)
-        }
-    }
-
-    private class RequiredService<T>(
-        private val resolve: () -> T,
-    ) {
-        operator fun getValue(thisRef: STPlugin, property: KProperty<*>): T {
-            return resolve()
         }
     }
 }
