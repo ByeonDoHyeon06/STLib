@@ -99,7 +99,11 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-gradle/
+gradle/*
+!gradle/wrapper/
+gradle/wrapper/*
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 .gradle
 .gradle-local
 build/
@@ -141,5 +145,4 @@ skills-lock.json
 !.github/workflows/**
 .kotlin
 
-# Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
-!gradle-wrapper.jar
+# Keep Gradle wrapper files versioned (required for CI ./gradlew)

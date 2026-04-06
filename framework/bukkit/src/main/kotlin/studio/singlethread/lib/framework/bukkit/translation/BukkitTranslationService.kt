@@ -57,6 +57,7 @@ class BukkitTranslationService(
 
             Files.createDirectories(translationDirectory)
             bundles.clear()
+            missingWarnings.clear()
 
             requiredLocales(normalizedSettings).forEach { locale ->
                 ensureBundleFile(locale)
@@ -223,4 +224,3 @@ class BukkitTranslationService(
         const val EN_US: String = "en_us"
     }
 }
-

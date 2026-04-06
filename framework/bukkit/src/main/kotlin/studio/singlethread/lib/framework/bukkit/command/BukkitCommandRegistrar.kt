@@ -26,8 +26,10 @@ import studio.singlethread.lib.framework.api.command.CommandArgumentKind
 import studio.singlethread.lib.framework.api.command.CommandArgumentSpec
 import studio.singlethread.lib.framework.api.command.CommandContext
 import studio.singlethread.lib.framework.api.command.CommandDefinition
+import studio.singlethread.lib.framework.api.command.CommandDefinitionValidator
 import studio.singlethread.lib.framework.api.command.CommandNodeSpec
 import studio.singlethread.lib.framework.api.command.CommandRegistrar
+import studio.singlethread.lib.framework.api.command.CommandResponseChannel
 import studio.singlethread.lib.framework.api.command.CommandRequirement
 import studio.singlethread.lib.framework.api.command.CommandRequirementContext
 import studio.singlethread.lib.framework.api.command.CommandSenderConstraint
@@ -68,7 +70,7 @@ class BukkitCommandRegistrar(
             rawArguments = commandArgs.rawArgsMap(),
             fullInput = commandArgs.fullInput(),
         ).also { commandContext ->
-            commandContext.responder = { message -> sendReply(sender, message) }
+            commandContext.responder = CommandResponseChannel { message -> sendReply(sender, message) }
         }
     }
 
@@ -325,65 +327,6 @@ internal class BukkitCommandCompiler(
     }
 
     private fun validateDefinition(definition: CommandDefinition) {
-        validateOwnAliases(
-            primary = definition.name,
-            aliases = definition.aliases,
-            scope = "command '${definition.name}'",
-        )
-        validateSiblingTokenUniqueness(
-            siblings = definition.children,
-            scope = "command '${definition.name}'",
-        )
-        definition.children.forEach { child ->
-            validateNode(
-                node = child,
-                path = "${definition.name} ${child.literal}",
-            )
-        }
-    }
-
-    private fun validateNode(
-        node: CommandNodeSpec,
-        path: String,
-    ) {
-        validateOwnAliases(primary = node.literal, aliases = node.aliases, scope = "node '$path'")
-        validateSiblingTokenUniqueness(node.children, scope = "node '$path'")
-        node.children.forEach { child ->
-            validateNode(child, "$path ${child.literal}")
-        }
-    }
-
-    private fun validateOwnAliases(
-        primary: String,
-        aliases: List<String>,
-        scope: String,
-    ) {
-        val primaryKey = normalizeToken(primary)
-        aliases.forEach { alias ->
-            require(normalizeToken(alias) != primaryKey) {
-                "alias '$alias' in $scope duplicates primary token '$primary'"
-            }
-        }
-    }
-
-    private fun validateSiblingTokenUniqueness(
-        siblings: List<CommandNodeSpec>,
-        scope: String,
-    ) {
-        val seen = linkedMapOf<String, String>()
-        siblings.forEach { node ->
-            val tokens = sequenceOf(node.literal) + node.aliases.asSequence()
-            tokens.forEach { token ->
-                val normalized = normalizeToken(token)
-                val previousOwner = seen.putIfAbsent(normalized, node.literal)
-                require(previousOwner == null) {
-                    "duplicate command token '$token' in $scope: '$previousOwner' conflicts with '${node.literal}'"
-                }
-            }
-        }
-    }
-
-    private fun normalizeToken(value: String): String {
-        return value.trim().lowercase()
+        CommandDefinitionValidator.validateDefinition(definition)
     }
 }

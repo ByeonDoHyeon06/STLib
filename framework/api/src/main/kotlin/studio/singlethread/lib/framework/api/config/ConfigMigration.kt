@@ -4,10 +4,18 @@ interface VersionedConfig {
     var version: Int
 }
 
+fun interface ConfigMigrationAction<T : VersionedConfig> {
+    fun migrate(config: T)
+}
+
+fun interface ConfigMigrationPlanDefinition<T : VersionedConfig> {
+    fun define(builder: ConfigMigrationPlanBuilder<T>)
+}
+
 data class ConfigMigrationStep<T : VersionedConfig>(
     val fromVersion: Int,
     val toVersion: Int,
-    val migrate: (T) -> Unit,
+    val migrate: ConfigMigrationAction<T>,
 )
 
 data class AppliedConfigMigrationStep(
@@ -47,7 +55,7 @@ class ConfigMigrationPlan<T : VersionedConfig> internal constructor(
                 stepsByFromVersion[currentVersion]
                     ?: error("Missing config migration step: $currentVersion -> ... (latest=$latestVersion)")
 
-            step.migrate(config)
+            step.migrate.migrate(config)
             config.version = step.toVersion
             applied += AppliedConfigMigrationStep(step.fromVersion, step.toVersion)
             currentVersion = config.version
@@ -67,7 +75,7 @@ class ConfigMigrationPlanBuilder<T : VersionedConfig> internal constructor() {
     fun step(
         fromVersion: Int,
         toVersion: Int,
-        migrate: (T) -> Unit,
+        migrate: ConfigMigrationAction<T>,
     ) {
         require(fromVersion >= 1) { "fromVersion must be >= 1" }
         require(toVersion > fromVersion) { "toVersion must be greater than fromVersion" }
@@ -82,9 +90,9 @@ class ConfigMigrationPlanBuilder<T : VersionedConfig> internal constructor() {
 
 fun <T : VersionedConfig> configMigrationPlan(
     latestVersion: Int,
-    builder: ConfigMigrationPlanBuilder<T>.() -> Unit,
+    definition: ConfigMigrationPlanDefinition<T>,
 ): ConfigMigrationPlan<T> {
     val migrationBuilder = ConfigMigrationPlanBuilder<T>()
-    migrationBuilder.builder()
+    definition.define(migrationBuilder)
     return migrationBuilder.build(latestVersion)
 }

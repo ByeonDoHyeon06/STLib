@@ -109,7 +109,7 @@ class JdbcStorageFactory(
             }
 
         val result = dependencyLoader.load(library)
-        if (result.status == DependencyStatus.FAILED) {
+        if (result.status == DependencyStatus.FAILED || result.status == DependencyStatus.SKIPPED_DISABLED) {
             throw IllegalStateException(
                 "Failed to load runtime DB dependency ${library.groupId}:${library.artifactId}:${library.version}. ${result.message}",
                 result.error,

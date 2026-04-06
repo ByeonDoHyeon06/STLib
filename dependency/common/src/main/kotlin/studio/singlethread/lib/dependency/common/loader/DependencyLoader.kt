@@ -14,6 +14,6 @@ interface DependencyLoader {
 
 object NoopDependencyLoader : DependencyLoader {
     override fun load(library: LibraryDescriptor): DependencyLoadResult {
-        return DependencyLoadResult(library, DependencyStatus.SKIPPED, "Dependency loading disabled")
+        return DependencyLoadResult(library, DependencyStatus.SKIPPED_DISABLED, "Dependency loading disabled")
     }
 }

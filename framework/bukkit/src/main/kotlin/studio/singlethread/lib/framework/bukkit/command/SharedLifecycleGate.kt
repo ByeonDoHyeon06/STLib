@@ -3,6 +3,7 @@ package studio.singlethread.lib.framework.bukkit.command
 import dev.jorel.commandapi.CommandAPI
 import dev.jorel.commandapi.CommandAPIBukkitConfig
 import org.bukkit.plugin.java.JavaPlugin
+import java.util.Properties
 
 internal class SharedLifecycleGate {
     private val lock = Any()
@@ -96,16 +97,65 @@ internal class SharedLifecycleGate {
     )
 }
 
+internal class CommandApiRuntimeOwnershipGuard(
+    private val runtimeId: String,
+    private val properties: Properties = System.getProperties(),
+    private val propertyKey: String = OWNER_PROPERTY_KEY,
+) {
+    fun claim(pluginName: String) {
+        synchronized(properties) {
+            val existing = properties.getProperty(propertyKey)
+            if (existing == null) {
+                properties.setProperty(propertyKey, runtimeId)
+                return
+            }
+
+            check(existing == runtimeId) {
+                "Detected multiple STLib runtime loaders for CommandAPI " +
+                    "(plugin=$pluginName, ownerRuntime=$existing, currentRuntime=$runtimeId). " +
+                    "Do not shade STLib into consumer plugins; use compileOnly + depend."
+            }
+        }
+    }
+
+    fun releaseWhenIdle(state: SharedLifecycleGate.State) {
+        if (state.loadRefs > 0 || state.enableRefs > 0) {
+            return
+        }
+        synchronized(properties) {
+            if (properties.getProperty(propertyKey) == runtimeId) {
+                properties.remove(propertyKey)
+            }
+        }
+    }
+
+    fun ownerRuntimeId(): String? {
+        synchronized(properties) {
+            return properties.getProperty(propertyKey)
+        }
+    }
+
+    companion object {
+        const val OWNER_PROPERTY_KEY: String = "studio.singlethread.lib.commandapi.runtime.owner"
+    }
+}
+
 internal object CommandApiLifecycle {
     private val gate = SharedLifecycleGate()
+    private val runtimeGuard =
+        CommandApiRuntimeOwnershipGuard(
+            runtimeId = buildRuntimeId(),
+        )
 
     fun onLoad(plugin: JavaPlugin) {
+        runtimeGuard.claim(plugin.name)
         gate.onLoad {
             CommandAPI.onLoad(config(plugin))
         }
     }
 
     fun onEnable(plugin: JavaPlugin) {
+        runtimeGuard.claim(plugin.name)
         gate.onEnableEnsuringLoaded(
             loadAction = {
                 CommandAPI.onLoad(config(plugin))
@@ -116,12 +166,26 @@ internal object CommandApiLifecycle {
     }
 
     fun onDisable() {
-        gate.onDisable {
-            CommandAPI.onDisable()
+        var failure: Throwable? = null
+        try {
+            gate.onDisable {
+                CommandAPI.onDisable()
+            }
+        } catch (error: Throwable) {
+            failure = error
+        } finally {
+            runtimeGuard.releaseWhenIdle(gate.snapshot())
         }
+        failure?.let { throw it }
     }
 
     private fun config(plugin: JavaPlugin): CommandAPIBukkitConfig {
         return CommandAPIBukkitConfig(plugin).silentLogs(true)
+    }
+
+    private fun buildRuntimeId(): String {
+        val classLoader = CommandApiLifecycle::class.java.classLoader
+        val classLoaderId = classLoader?.let(System::identityHashCode) ?: 0
+        return "stlib-runtime-$classLoaderId"
     }
 }

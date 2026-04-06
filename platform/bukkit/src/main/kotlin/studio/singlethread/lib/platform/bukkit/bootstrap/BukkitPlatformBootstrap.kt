@@ -143,10 +143,10 @@ class BukkitPlatformBootstrap : PlatformBootstrap<JavaPlugin> {
         reason: String,
     ) {
         val capabilities = kernel.capabilityRegistry
-        if (result == DependencyStatus.FAILED) {
-            capabilities.disable(capability, reason)
-        } else {
+        if (result == DependencyStatus.LOADED || result == DependencyStatus.PRESENT) {
             capabilities.enable(capability)
+            return
         }
+        capabilities.disable(capability, reason)
     }
 }

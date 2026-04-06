@@ -106,6 +106,10 @@ fun interface CommandExecutor {
     fun execute(context: CommandContext)
 }
 
+fun interface CommandResponseChannel {
+    fun send(message: String)
+}
+
 data class CommandContext(
     val senderName: String,
     val isPlayer: Boolean,
@@ -115,10 +119,10 @@ data class CommandContext(
     val rawArguments: Map<String, String> = emptyMap(),
     val fullInput: String = "",
 ) {
-    var responder: ((String) -> Unit)? = null
+    var responder: CommandResponseChannel? = null
 
     fun reply(message: String) {
-        responder?.invoke(message)
+        responder?.send(message)
     }
 
     fun reply(component: Component) {
