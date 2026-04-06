@@ -17,6 +17,9 @@ class BridgeFileSettings {
     @field:Comment("Default timeout for RPC requests in milliseconds.")
     var requestTimeoutMillis: Long = 3_000L
 
+    @field:Comment("Maximum number of pending RPC requests before backpressure rejects new requests.")
+    var maxPendingRequests: Int = 2_048
+
     @field:Comment("Redis backend settings used in REDIS/COMPOSITE mode.")
     var redis: RedisBridgeSettings = RedisBridgeSettings()
 }

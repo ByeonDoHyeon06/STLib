@@ -1,97 +1,98 @@
 # STLib
 
-STLib는 Bukkit/Paper/Folia 기반 Kotlin 플러그인을 빠르게 개발하기 위한 프레임워크입니다.
+STLib is a Kotlin-first framework for Bukkit/Paper/Folia plugin development.
+The current priority is **code quality and runtime safety** (SOLID, clear boundaries, testability), not feature-count parity.
 
-핵심 목표:
-- 일관된 라이프사이클 (`onLoad -> initialize -> load -> onEnable -> enable -> onDisable -> disable`)
-- CommandAPI Thin Wrapper 기반 트리 DSL
-- 통합 Resource API (Vanilla / ItemsAdder / Oraxen / Nexo / MMOItems / EcoItems)
-- Storage 추상화 (json/sqlite/mysql/postgresql)
-- MiniMessage + Translation + 선택적 PlaceholderAPI
-- 운영 관제 (`/stlib`, `/stlib reload`, `/stlibgui`)
+## What STLib Focuses On
 
-## 모듈 구조
+- Predictable lifecycle orchestration
+- CommandAPI-based thin command wrapper (tree DSL)
+- Unified resource API (Vanilla + major resource plugins)
+- Storage abstraction (`json`, `sqlite`, `mysql`, `postgresql`)
+- MiniMessage + translation pipeline + optional PlaceholderAPI
+- Core operations commands (`/stlib`, `/stlib reload`, `/stlib doctor`, `/stlib gui`)
 
-- `framework:api`: 플랫폼 비종속 계약(명령/이벤트/스케줄러/브리지/DI 등)
-- `framework:kernel`: 순수 엔진/서비스 레지스트리/Capability 코어
-- `framework:bukkit`: Bukkit/Paper/Folia 구현체
-- `framework:core`: STLib 운영 플러그인 코어(명령/대시보드/헬스)
+## Module Layout
 
-## 빠른 시작
+- `framework:api`: platform-agnostic contracts
+- `framework:kernel`: platform-agnostic runtime kernel (registry/capability)
+- `framework:bukkit`: Bukkit/Paper/Folia implementations
+- `framework:core`: STLib operations plugin runtime
 
-### 1) 기본 플러그인 클래스
+## Dependency Status Model
+
+Optional runtime dependencies are reported with explicit status values:
+
+- `LOADED`: downloaded/loaded by STLib runtime loader
+- `PRESENT`: already available on server/plugin classpath (no download)
+- `SKIPPED_DISABLED`: runtime loading disabled by config
+- `FAILED`: load attempt failed
+
+Capability policy is unified:
+- `LOADED`, `PRESENT` => capability ON
+- `SKIPPED_DISABLED`, `FAILED` => capability OFF (with reason)
+
+When `PRESENT` version differs from requested version, STLib uses **Warn + Enable**
+(logs mismatch, keeps feature enabled to avoid hard downtime).
+
+## Lifecycle Model
+
+STPlugin lifecycle is fixed:
+
+`onLoad -> initialize -> load -> onEnable -> enable -> onDisable -> disable`
+
+This gives a stable place for bootstrap, registration, and teardown.
+
+## STPlugin (Slim Core)
+
+`STPlugin` is an orchestrator, not a large utility bucket.
+
+### Stable entry points
+
+- lifecycle hooks: `initialize`, `load`, `enable`, `disable`
+- commands: `command("name") { ... }`, `command<MyCommand>()`
+- events: `listen`, `unlisten`, `unlistenAll`, `fire`
+- DI: `component<T>()`
+- messaging: `send`, `console`
+
+### Service accessors
+
+- `text`, `translation`, `notifier`
+- `scheduler`, `commandRegistrar`, `eventRegistrar`
+- `configService`, `configRegistry`
+- `storageApi`, `storage`
+- `bridge`, `gui`, `resource`
+- `pluginConfig`, `capabilityRegistry`
+
+## Quick Start
 
 ```kotlin
 import studio.singlethread.lib.framework.bukkit.lifecycle.STPlugin
 
 class ExamplePlugin : STPlugin(version = "1.0.0") {
     override fun initialize() {
-        // config register, initial wiring
-    }
-
-    override fun load() {
-        // pre-enable phase
+        // config + bootstrap preparation
     }
 
     override fun enable() {
-        // command/event/scheduler
+        // register commands/listeners/services
     }
 
     override fun disable() {
-        // plugin custom shutdown
+        // custom shutdown
     }
 }
 ```
 
-`version`은 `config/plugin.yml`의 `version`이 비어 있을 때 fallback으로 사용됩니다.
+## Command DSL (Thin Wrapper)
 
-### 1-1) 로드 배너(ASCII Art) 커스터마이징
-
-배너는 공통 `STPlugin`이 아니라 `STLib`에서만 출력됩니다.
-즉, STLib 운영 플러그인의 타이틀 아트만 수정하면 됩니다.
+### Inline DSL
 
 ```kotlin
-class STLib : STPlugin() {
-    protected fun stlibTitleAsciiArt(): List<String> {
-        return listOf(/* your title art lines */)
-    }
-}
-```
-
-`framework/core/src/main/kotlin/studio/singlethread/lib/STLib.kt`의 `stlibTitleAsciiArt()`만 수정하면 됩니다.
-
-### 2) 자동 생성되는 기본 설정 파일
-
-플러그인 최초 실행 시 `plugins/<PluginName>/config/` 아래 파일이 자동 생성됩니다.
-
-- `plugin.yml` (플러그인 운영 설정: 버전/디버그)
-- `storage.yml` (스토리지 백엔드/연결 설정)
-- `depend.yml` (외부 연동/런타임 의존 로딩 설정)
-- `bridge.yml` (브리지 모드/노드/타임아웃/redis 설정)
-- `translation.yml` + `translation/{locale}.yml` (번역)
-
-예시: `config/plugin.yml`
-
-```yml
-version: "1.0.0"
-debug: false
-```
-
-참고:
-- 설정 클래스에는 `@Comment` 기반 주석이 포함되어 있습니다.
-- 기존 파일에 주석이 없는 경우, 과거에 생성된 파일일 수 있습니다(필요 시 백업 후 재생성).
-
-## Command DSL (v3)
-
-STLib은 `plugin.yml` 커맨드 선언 없이 CommandAPI로 등록합니다.
-
-```kotlin
-import studio.singlethread.lib.framework.api.command.CommandSenderConstraint
-
 override fun enable() {
     command("test") {
         description = "Example command"
-        permission = "example.command.test"
+        permission = "example.test"
         aliases("t")
 
         literal("show") {
@@ -104,39 +105,13 @@ override fun enable() {
             }
         }
 
-        literal("hide") {
-            sender(CommandSenderConstraint.PLAYER_ONLY)
-            executes { ctx ->
-                ctx.reply("<yellow>hidden</yellow>")
-            }
-        }
-
-        literal("clear") {
-            executes { ctx ->
-                ctx.reply("<red>cleared</red>")
-            }
-        }
+        literal("hide") { executes { it.reply("<yellow>hidden</yellow>") } }
+        literal("clear") { executes { it.reply("<red>cleared</red>") } }
     }
 }
 ```
 
-동적 탭완성 예시:
-
-```kotlin
-command("warp") {
-    literal("go") {
-        string(
-            name = "name",
-            dynamicSuggestions = { _ -> listOf("spawn", "shop", "pvp") },
-        )
-        executes { ctx ->
-            ctx.reply("warp: ${ctx.stringArgument("name")}")
-        }
-    }
-}
-```
-
-클래스형(플러그인 주입)도 지원합니다.
+### Class-based command (recommended for larger plugins)
 
 ```kotlin
 import studio.singlethread.lib.framework.api.command.CommandDslBuilder
@@ -144,46 +119,20 @@ import studio.singlethread.lib.framework.api.command.STCommand
 
 class TestCommand(plugin: ExamplePlugin) : STCommand<ExamplePlugin>(plugin) {
     override val name = "test"
-    override val permission = "example.command.test"
 
     override fun build(builder: CommandDslBuilder) {
-        builder.literal("show") {
-            string("x")
-            string("y")
-            executes { ctx ->
-                ctx.reply("<green>show</green> ${ctx.stringArgument("x")} ${ctx.stringArgument("y")}")
-            }
-        }
-        builder.literal("hide") { executes { it.reply("<yellow>hide</yellow>") } }
-        builder.literal("clear") { executes { it.reply("<red>clear</red>") } }
+        builder.literal("ping") { executes { it.reply("pong") } }
     }
 }
 
 override fun enable() {
-    command<TestCommand>() // reflection + DI
+    command<TestCommand>()
 }
 ```
 
-Bukkit 타입 인자 헬퍼는 확장 함수로 제공합니다.
+## Listener + DI
 
-```kotlin
-import studio.singlethread.lib.framework.bukkit.command.playerArgument
-import studio.singlethread.lib.framework.bukkit.command.worldArgument
-
-command("tpwhere") {
-    player("target")
-    world("world")
-    executes { ctx ->
-        val target = ctx.playerArgument("target") ?: return@executes
-        val world = ctx.worldArgument("world") ?: return@executes
-        ctx.reply("target=${target.name}, world=${world.name}")
-    }
-}
-```
-
-## Event + DI
-
-### 1) STListener(플러그인 주입형) 등록/해제
+### STListener
 
 ```kotlin
 import org.bukkit.event.EventHandler
@@ -193,25 +142,22 @@ import studio.singlethread.lib.framework.bukkit.event.STListener
 class JoinListener(plugin: ExamplePlugin) : STListener<ExamplePlugin>(plugin) {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
-        event.player.sendMessage("welcome from ${plugin.name}")
+        send(event.player, "<green>Welcome</green>")
     }
 }
 
 override fun enable() {
     listen<JoinListener>()
-    // 또는 listen(JoinListener(this))
 }
 ```
 
-### 2) DI 자동 스캔 (`@STComponent` / `@STInject`)
+### DI with `@STComponent` and `@STInject`
 
 ```kotlin
 import studio.singlethread.lib.framework.api.di.STComponent
 import studio.singlethread.lib.framework.api.di.STInject
-import studio.singlethread.lib.framework.api.di.STScope
-import studio.singlethread.lib.framework.bukkit.event.STListener
 
-@STComponent(scope = STScope.SINGLETON)
+@STComponent
 class WelcomeService {
     fun line(name: String) = "Welcome, $name"
 }
@@ -219,280 +165,238 @@ class WelcomeService {
 @STComponent
 class JoinListener @STInject constructor(
     plugin: ExamplePlugin,
-    private val welcomeService: WelcomeService,
+    private val welcome: WelcomeService,
 ) : STListener<ExamplePlugin>(plugin) {
     @org.bukkit.event.EventHandler
     fun onJoin(event: org.bukkit.event.player.PlayerJoinEvent) {
-        event.player.sendMessage(welcomeService.line(event.player.name))
+        event.player.sendMessage(welcome.line(event.player.name))
     }
 }
-
-override fun enable() {
-    listen<JoinListener>()
-    val service = component<WelcomeService>()
-}
-```
-
-DI 규칙:
-- 생성자 주입 기본 (`@STInject` 생성자 우선)
-- `@STInject` 필드 주입 지원 (`var`만 가능)
-- 스코프: `SINGLETON` / `PROTOTYPE`
-- 순환 의존/해결 불가 타입은 onLoad에서 fail-fast
-
-### 3) ST 커스텀 이벤트 발행
-
-```kotlin
-import org.bukkit.event.HandlerList
-import studio.singlethread.lib.framework.bukkit.event.STEvent
-
-class ExampleEvent(val value: String) : STEvent() {
-    companion object {
-        @JvmStatic
-        private val HANDLERS = HandlerList()
-
-        @JvmStatic
-        fun getHandlerList(): HandlerList = HANDLERS
-    }
-
-    override fun getHandlers(): HandlerList = HANDLERS
-}
-
-// fire(ExampleEvent("hello"))
 ```
 
 ## GUI DSL (Unified)
 
-STLib GUI는 `gui { ... }`로 만들고 `player.openInventory(gui)`로 엽니다.
-
 ```kotlin
-val basic = gui(rows = 1, title = "<gold>Basic</gold>") {
-    set(4, ItemStack(Material.APPLE)) { click ->
-        click.event.isCancelled = true
-        click.player.sendMessage("apple")
-    }
-}
-player.openInventory(basic)
-```
-
-```kotlin
+import org.bukkit.Material
 import org.bukkit.event.inventory.InventoryType
+import org.bukkit.inventory.ItemStack
+import studio.singlethread.lib.framework.bukkit.gui.STGuiDefinition
 
-val complex = gui(rows = 3, title = "<gray>Complex</gray>") {
-    pattern(
-        "#########",
-        "#   S   #",
-        "#########",
+val menu =
+    gui.menu(
+        title = text.parse("<gold>Menu</gold>"),
+        size = 27,
+        type = InventoryType.CHEST,
+        definition = STGuiDefinition {
+            pattern(
+                "#########",
+                "#   S   #",
+                "#########",
+            )
+
+            setSymbols(symbols = listOf('#'), item = ItemStack(Material.GRAY_STAINED_GLASS_PANE)) {
+                it.cancel()
+            }
+            set('S', ItemStack(Material.EMERALD)) {
+                it.cancel()
+                val next = it.toggle("view", first = "list", second = "detail")
+                it.player.sendMessage("view=$next")
+            }
+
+            state("view", "list")
+            view("view", "list", "summary", define = STGuiDefinition {
+                set(13, ItemStack(Material.BOOK))
+            })
+            view("view", "detail", define = STGuiDefinition {
+                set(13, ItemStack(Material.DIAMOND))
+            })
+        },
     )
-
-    set('#', ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)) { it.event.isCancelled = true }
-    set('S', ItemStack(Material.PLAYER_HEAD)) { it.event.isCancelled = true }
-}
-player.openInventory(complex)
-
-val dropper = gui(title = mini("<gray>Dropper</gray>"), size = 9, type = InventoryType.DROPPER) {
-    set(listOf(1, 3, 4, 5, 7), ItemStack(Material.GRAY_STAINED_GLASS_PANE))
-    onClick { it.event.isCancelled = true }
-}
-player.openInventory(dropper)
 ```
 
-상태 기반 뷰 전환(`page`) 예시:
+Context helpers:
+- `click.show(key, value)` updates state + refresh in one step
+- `click.toggle(key, first, second)` toggles state + refresh
+- `click.cancel()` / `click.allow()`
+- `click.viewer` alias for clearer code
+
+Tracked open paths:
 
 ```kotlin
-val routed = gui(rows = 6, title = "<gold>Plugins</gold>") {
-    state("view", "list")
-
-    pattern(
-        "#########",
-        "#       #",
-        "#       #",
-        "#       #",
-        "#       #",
-        "#########",
-    )
-    set('#', ItemStack(Material.GRAY_STAINED_GLASS_PANE))
-
-    page(stateKey = "view", stateValue = "list") {
-        set(10, ItemStack(Material.PAPER))
-        set(49, ItemStack(Material.BOOK)) { click ->
-            click.state("view", "detail")
-            click.refresh()
-        }
-    }
-
-    page(stateKey = "view", stateValue = "detail") {
-        set(22, ItemStack(Material.BOOK))
-        set(49, ItemStack(Material.ARROW)) { click ->
-            click.state("view", "list")
-            click.refresh()
-        }
-    }
-}
-player.openInventory(routed)
+menu.open(player)               // canonical template path
+gui.open(player, menu)          // canonical service path
+player.openInventory(menu)      // extension path (internally tracked)
 ```
 
-`page`는 “페이지네이션” 전용이 아니라, 상태값(`state`)에 따라 활성 블루프린트를 전환하는 조건부 레이어입니다.
-
-## Scheduler (Hybrid)
-
-기존 tick 기반 API + duration/unit 기반 API + completion chain을 함께 제공합니다.
+Alternative direct create is still available:
 
 ```kotlin
-import java.time.Duration
-import java.util.concurrent.TimeUnit
-
-override fun enable() {
-    // 기존 호환 API
-    later(20L, Runnable { debug("after 1s in ticks") })
-    timer(20L, 20L, Runnable { debug("every 1s in ticks") })
-
-    // high-level delay
-    later(3, TimeUnit.SECONDS, Runnable { debug("3s delayed") })
-        .onComplete { result -> debug("delay result=${result.status}") }
-
-    // async delay
-    asyncLater(Duration.ofSeconds(2), Runnable { debug("async delayed") })
-        .onCompleteAsync { result -> debug("async complete=${result.status}") }
-}
+val created =
+    gui.create(
+        title = text.parse("<gold>Menu</gold>"),
+        size = 27,
+        type = InventoryType.CHEST,
+    ) {
+        set(13, ItemStack(Material.BOOK))
+    }
 ```
 
-completion status:
-- `SUCCESS`
-- `CANCELLED`
-- `FAILED`
+## Scheduler (Stable + DX)
 
-## Bridge v2 (Typed Pub/Sub + RPC)
+```kotlin
+import studio.singlethread.lib.framework.api.scheduler.seconds
+import studio.singlethread.lib.framework.api.scheduler.millis
+import studio.singlethread.lib.framework.api.scheduler.STTask
+import studio.singlethread.lib.framework.api.scheduler.STRepeatTask
+
+scheduler
+    .delay(2.seconds) { logger.info("delayed") }
+    .then { logger.info("follow-up sync") }
+    .thenDelay(250.millis, task = STTask { logger.info("after short delay") })
+    .thenAsync { logger.info("follow-up async") }
+    .onFailure { error -> logger.warning("failed: ${error?.message}") }
+
+scheduler.repeat(
+    every = 5.seconds,
+    delay = 1.seconds,
+) { logger.info("tick") }
+
+scheduler.repeat(
+    times = 3,
+    every = 1.seconds,
+) { logger.info("run exactly 3 times") }
+
+scheduler.repeat(
+    every = 1.seconds,
+    task = STRepeatTask { ctx ->
+        logger.info("iteration=${ctx.iteration}")
+        if (ctx.iteration >= 10) ctx.stop()
+    },
+)
+```
+
+Low-level APIs (`runSync`, `runAsync`, `runLater`, `runTimer`, `runDelayed`, `runRepeating`) remain supported.
+Time DSL supports `millis`, `ticks`, `seconds`, `minutes`, `hours`.
+
+## Hard Break Migration (GUI + Scheduler)
+
+| Before | After |
+| --- | --- |
+| `gui.create(rows = 3, title = ...) { ... }` | `gui.create(title = ..., size = 27) { ... }` |
+| `page("view", "list") { ... }` | `view("view", "list") { ... }` |
+| `pageDefault("view") { ... }` | base layout in root builder + `view(...)` overlays |
+| `it.event.isCancelled = true` | `it.isCancelled = true` |
+| `player.openInventory(stGui.inventory)` | `stGui.open(player)` or `player.openInventory(stGui)` |
+| `scheduler.delay(Duration.ofSeconds(2), task = Runnable { ... })` | `scheduler.delay(2.seconds) { ... }` |
+| `.thenAsync(Runnable { ... })` | `.thenAsync { ... }` |
+
+## Bridge v2 (Typed Pub/Sub + Target RPC)
 
 ```kotlin
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestResult
-import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
 
-private val stringCodec =
-    object : BridgeCodec<String> {
-        override fun encode(value: String): String = value
-        override fun decode(payload: String): String = payload
-    }
+val codec = object : BridgeCodec<String> {
+    override fun encode(value: String): String = value
+    override fun decode(payload: String): String = payload
+}
 
-override fun enable() {
-    val channel = bridgeChannel("example", "chat")
+val channel = BridgeChannel.of("example", "chat")
 
-    subscribe(channel, stringCodec) { payload ->
-        debug("received: $payload")
-    }
+bridge.subscribe(channel, codec) { incoming ->
+    logger.info("from=${incoming.sourceNode.value}, payload=${incoming.payload}")
+}
 
-    publish(channel, "hello-bridge", stringCodec)
+bridge.publish(channel, "hello", codec)
 
-    respond(channel, stringCodec, stringCodec) { request ->
-        if (request.payload == "ping") BridgeRequestResult.success("pong")
-        else BridgeRequestResult.error("unknown request")
-    }
-
-    request(channel, "ping", stringCodec, stringCodec).thenAccept { response ->
-        when (response.status) {
-            BridgeResponseStatus.SUCCESS -> debug("rpc=${response.payload}")
-            BridgeResponseStatus.TIMEOUT -> debug("rpc timeout")
-            BridgeResponseStatus.NO_HANDLER -> debug("rpc no-handler")
-            BridgeResponseStatus.ERROR -> debug("rpc error=${response.message}")
-        }
-    }
+bridge.respond(channel, codec, codec) { request ->
+    if (request.payload == "ping") BridgeRequestResult.success("pong")
+    else BridgeRequestResult.error("unknown")
 }
 ```
 
-운영 모드(`config/bridge.yml`):
+Modes in `config/bridge.yml`:
 - `LOCAL`
 - `REDIS`
 - `COMPOSITE`
 
-Redis 연결 실패 시 local로 자동 degrade됩니다.
+If Redis is unavailable, STLib degrades to local mode with capability reason logging.
 
-## Text / Translation / PlaceholderAPI
+In-memory bridge also guarantees request finalization on shutdown:
+- pending requests are completed as `ERROR` during `close()`
+- timeout/close races are guarded against duplicate completion
+
+## Text + Translation + PlaceholderAPI
 
 ```kotlin
-override fun enable() {
-    command("hello") {
-        executes { ctx ->
-            val sender = ctx.sender as? org.bukkit.command.CommandSender ?: return@executes
-            sender.sendMessage(mini(sender, "<gold>Hello <player></gold>"))
-            sendTranslated(sender, "example.welcome", mapOf("player" to sender.name))
-        }
-    }
-}
+val line = translation.translate(
+    key = "example.welcome",
+    placeholders = mapOf("player" to player.name),
+)
+player.sendMessage(text.parse(line))
 ```
 
-메시징 가이드:
-- 간단 사용: `send(sender, "<mini>...")`, `console("<mini>...")`
-- 고급 사용: `notifier.send`, `notifier.sendPrefixed`, `notifier.actionBar`, `notifier.title`
+Translation fallback order:
+1. requested/sender locale
+2. default locale (`config/translation.yml`)
+3. `en_us`
+4. fallback marker: `!key!`
 
-`depend.yml`에서 PlaceholderAPI 연동이 활성화되어 있고 플러그인이 설치된 경우, `mini(sender, ...)` 경로에서 플레이스홀더를 사용할 수 있습니다.
+`translation.reload()` resets missing-key warning cache, so post-reload missing keys can warn once again.
 
 ## Storage
 
 ```kotlin
-import studio.singlethread.lib.storage.api.codec.StorageCodec
-import java.nio.charset.StandardCharsets
-
-data class UserData(val points: Int)
-
-private val userCodec =
-    object : StorageCodec<UserData> {
-        override fun encode(value: UserData): ByteArray {
-            val raw = """{"points":${value.points}}"""
-            return raw.toByteArray(StandardCharsets.UTF_8)
-        }
-
-        override fun decode(bytes: ByteArray): UserData {
-            val raw = bytes.toString(StandardCharsets.UTF_8)
-            return UserData(raw.substringAfter(":").substringBefore("}").toInt())
-        }
-    }
-
-override fun enable() {
-    val users = storage.collection("users")
-
-    users.set("steve", UserData(10), userCodec).thenAccept {
-        debug("saved: $it")
-    }
-
-    users.get("steve", userCodec).thenAccept { loaded ->
-        debug("loaded: $loaded")
-    }
-}
+val users = storage.collection("users")
+// Use async storage operations for heavy I/O.
 ```
 
-원칙:
-- 비동기 API 우선 사용
-- 메인 스레드에서 sync 호출 남용 금지
+Default storage backend is selected from `config/storage.yml` with capability-aware fallback.
 
-## Resource API
+## Unified Resource API
 
 ```kotlin
-override fun enable() {
-    val items = resource.items()
-    val blocks = resource.blocks()
-    val furnitures = resource.furnitures()
+val items = resource.items()
+val id = "minecraft:diamond_sword"
 
-    val swordRef = items.from("minecraft:diamond_sword")
-    val sword = items.create("minecraft:diamond_sword")
-    val swordName = items.displayName("minecraft:diamond_sword")
-
-    debug("item ref=$swordRef, display=$swordName, stack=${sword != null}")
-}
+val exists = items.exists(id)
+val icon = items.icon(id)
+val displayName = items.displayName(id)
+val stack = items.create(id)
 ```
 
-대표 메서드:
-- `from(...)`: ID 또는 게임 오브젝트 -> 참조 객체 역매핑
-- `create(...)`: 참조/ID -> 실제 오브젝트 생성
-- `displayName(...)`, `icon(...)`, `ids()`, `exists(...)`
+Providers are optional. Unavailable providers are degraded by capability instead of hard-failing boot.
 
-## 운영 명령
+## Generated Config Files
 
-- `/stlib`: STLib 런타임 상태
-- `/stlib reload`: 설정/번역/관제 리로드
-- `/stlibgui`: STPlugin Core Ops 대시보드
+On first run, STLib-based plugins generate:
 
-## 참고
+- `plugins/<Plugin>/config/plugin.yml`
+- `plugins/<Plugin>/config/storage.yml`
+- `plugins/<Plugin>/config/depend.yml`
+- `plugins/<Plugin>/config/bridge.yml`
+- `plugins/<Plugin>/config/translation.yml`
+- `plugins/<Plugin>/translation/{locale}.yml`
 
-빠르게 진화하는 저장소라 API 변경 시 README 예제가 먼저 갱신될 수 있습니다.
-실사용 전에는 각 모듈 테스트(`:framework:api`, `:framework:bukkit`, `:framework:core`)를 같이 확인하는 것을 권장합니다.
+## STLib Operations Commands
+
+- `/stlib`: runtime and capability summary
+- `/stlib reload`: reload runtime config/translation/dashboard settings
+- `/stlib doctor`: health diagnostics summary
+- `/stlib gui`: STPlugin operations dashboard
+
+## Quality Gates
+
+```bash
+./gradlew :framework:api:test
+./gradlew :framework:bukkit:test
+./gradlew verificationMatrix
+./gradlew qualityGate
+```
+
+## Canonical Agent Docs
+
+Project guidance for AI-assisted implementation is maintained in:
+
+- `/Users/byeondohyeon/Develop/Kotlin/STLib/.agents/skills/stlib/SKILL.md`

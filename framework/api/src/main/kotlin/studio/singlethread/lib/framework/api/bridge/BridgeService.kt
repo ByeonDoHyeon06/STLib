@@ -121,8 +121,51 @@ data class BridgeResponse<T : Any>(
     val responderNode: BridgeNodeId? = null,
 )
 
+data class BridgeMetricsSnapshot(
+    val pendingRequests: Int = 0,
+    val publishedMessages: Long = 0,
+    val requestSubmitted: Long = 0,
+    val requestSucceeded: Long = 0,
+    val requestTimedOut: Long = 0,
+    val requestNoHandler: Long = 0,
+    val requestErrored: Long = 0,
+    val requestRejectedBackpressure: Long = 0,
+    val responseMatched: Long = 0,
+    val responseLate: Long = 0,
+    val responseTargetMismatched: Long = 0,
+    val decodeFailures: Long = 0,
+) {
+    companion object {
+        val EMPTY = BridgeMetricsSnapshot()
+
+        fun merge(
+            left: BridgeMetricsSnapshot,
+            right: BridgeMetricsSnapshot,
+        ): BridgeMetricsSnapshot {
+            return BridgeMetricsSnapshot(
+                pendingRequests = left.pendingRequests + right.pendingRequests,
+                publishedMessages = left.publishedMessages + right.publishedMessages,
+                requestSubmitted = left.requestSubmitted + right.requestSubmitted,
+                requestSucceeded = left.requestSucceeded + right.requestSucceeded,
+                requestTimedOut = left.requestTimedOut + right.requestTimedOut,
+                requestNoHandler = left.requestNoHandler + right.requestNoHandler,
+                requestErrored = left.requestErrored + right.requestErrored,
+                requestRejectedBackpressure = left.requestRejectedBackpressure + right.requestRejectedBackpressure,
+                responseMatched = left.responseMatched + right.responseMatched,
+                responseLate = left.responseLate + right.responseLate,
+                responseTargetMismatched = left.responseTargetMismatched + right.responseTargetMismatched,
+                decodeFailures = left.decodeFailures + right.decodeFailures,
+            )
+        }
+    }
+}
+
 interface BridgeService : AutoCloseable {
     fun nodeId(): BridgeNodeId
+
+    fun metrics(): BridgeMetricsSnapshot {
+        return BridgeMetricsSnapshot.EMPTY
+    }
 
     fun publish(channel: String, payload: String) {
         publish(channel = BridgeChannel.parse(channel), payload = payload)

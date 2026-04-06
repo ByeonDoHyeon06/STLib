@@ -116,7 +116,7 @@ gradle-app.setting
 run/
 runs/
 
-# Local test workspaces (root-level only)
+# Local test workspaces
 **/test/
 **/tests/
 **/testdata/
@@ -126,9 +126,19 @@ runs/
 **/sandbox/
 examples-local/
 
+# Keep framework boundary tests versioned
+!framework/bukkit/src/test/
+!framework/bukkit/src/test/**
+!framework/core/src/test/
+!framework/core/src/test/**
+
 .agents/skills/solid
 skills-lock.json
-.github
+# Keep CI workflows versioned
+.github/*
+!.github/
+!.github/workflows/
+!.github/workflows/**
 .kotlin
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)

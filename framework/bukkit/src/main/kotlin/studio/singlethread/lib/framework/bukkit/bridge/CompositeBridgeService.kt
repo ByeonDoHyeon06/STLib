@@ -3,6 +3,7 @@ package studio.singlethread.lib.framework.bukkit.bridge
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
 import studio.singlethread.lib.framework.api.bridge.BridgeListener
+import studio.singlethread.lib.framework.api.bridge.BridgeMetricsSnapshot
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
 import studio.singlethread.lib.framework.api.bridge.BridgeResponse
@@ -18,6 +19,11 @@ class CompositeBridgeService(
 ) : BridgeService {
     override fun nodeId(): BridgeNodeId {
         return local.nodeId()
+    }
+
+    override fun metrics(): BridgeMetricsSnapshot {
+        val distributedMetrics = distributed?.metrics() ?: BridgeMetricsSnapshot.EMPTY
+        return BridgeMetricsSnapshot.merge(local.metrics(), distributedMetrics)
     }
 
     override fun publish(
@@ -37,15 +43,8 @@ class CompositeBridgeService(
         channel: BridgeChannel,
         listener: BridgeListener,
     ): BridgeSubscription {
-        val distributedService = distributed
-        if (distributedService == null) {
-            return local.subscribe(channel, listener)
-        }
-        val localSub = local.subscribe(channel, listener)
-        val distributedSub = distributedService.subscribe(channel, listener)
-        return BridgeSubscription {
-            localSub.unsubscribe()
-            distributedSub.unsubscribe()
+        return subscribeWithSource(channel) { incoming ->
+            listener.onMessage(incoming.channel.asString(), incoming.payload)
         }
     }
 
@@ -57,8 +56,15 @@ class CompositeBridgeService(
         if (distributedService == null) {
             return local.subscribeWithSource(channel, listener)
         }
+        val localNode = local.nodeId()
         val localSub = local.subscribeWithSource(channel, listener)
-        val distributedSub = distributedService.subscribeWithSource(channel, listener)
+        val distributedSub =
+            distributedService.subscribeWithSource(channel) { incoming ->
+                if (incoming.sourceNode == localNode) {
+                    return@subscribeWithSource
+                }
+                listener.onMessage(incoming)
+            }
         return BridgeSubscription {
             localSub.unsubscribe()
             distributedSub.unsubscribe()

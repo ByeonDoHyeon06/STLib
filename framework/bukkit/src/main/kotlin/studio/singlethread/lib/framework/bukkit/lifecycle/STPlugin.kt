@@ -1,87 +1,57 @@
 package studio.singlethread.lib.framework.bukkit.lifecycle
 
-import net.kyori.adventure.text.Component
 import org.bukkit.command.CommandSender
-import org.bukkit.entity.Player
 import org.bukkit.event.Listener
-import org.bukkit.event.inventory.InventoryType
 import org.bukkit.plugin.java.JavaPlugin
-import studio.singlethread.lib.framework.api.bridge.BridgeService
-import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
-import studio.singlethread.lib.framework.api.bridge.BridgeChannel
-import studio.singlethread.lib.framework.api.bridge.BridgeCodec
-import studio.singlethread.lib.framework.api.bridge.BridgeListener
-import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
-import studio.singlethread.lib.framework.api.bridge.BridgePayloadListener
-import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
-import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.capability.CapabilityRegistry
 import studio.singlethread.lib.framework.api.command.CommandDefinition
 import studio.singlethread.lib.framework.api.command.CommandRegistrar
 import studio.singlethread.lib.framework.api.command.STCommand
 import studio.singlethread.lib.framework.api.command.CommandTree
 import studio.singlethread.lib.framework.api.command.commandDsl
-import studio.singlethread.lib.framework.api.config.ConfigMigrationPlan
 import studio.singlethread.lib.framework.api.config.ConfigRegistry
 import studio.singlethread.lib.framework.api.config.ConfigService
-import studio.singlethread.lib.framework.api.config.VersionedConfig
 import studio.singlethread.lib.framework.api.di.ComponentScanSummary
 import studio.singlethread.lib.framework.api.event.EventRegistrar
 import studio.singlethread.lib.framework.api.kernel.STKernel
 import studio.singlethread.lib.framework.api.lifecycle.STLifecycle
 import studio.singlethread.lib.framework.api.notifier.NotifierService
-import studio.singlethread.lib.framework.api.scheduler.ScheduledTask
 import studio.singlethread.lib.framework.api.scheduler.SchedulerService
-import studio.singlethread.lib.framework.api.scheduler.ChainedScheduledTask
-import studio.singlethread.lib.framework.api.scheduler.DelaySchedule
-import studio.singlethread.lib.framework.api.scheduler.RepeatSchedule
 import studio.singlethread.lib.framework.api.text.TextService
 import studio.singlethread.lib.framework.api.translation.TranslationService
 import studio.singlethread.lib.framework.api.kernel.requireService
 import studio.singlethread.lib.framework.api.kernel.service
+import studio.singlethread.lib.framework.bukkit.bootstrap.BootstrapDiagnostics
 import studio.singlethread.lib.framework.bukkit.bootstrap.BukkitKernelBootstrapper
-import studio.singlethread.lib.framework.bukkit.bridge.BridgeRuntimeInfo
-import studio.singlethread.lib.framework.bukkit.command.BukkitCommandRegistrar
 import studio.singlethread.lib.framework.bukkit.command.CommandApiLifecycle
-import studio.singlethread.lib.framework.bukkit.config.BukkitConfigRegistry
 import studio.singlethread.lib.framework.bukkit.config.PluginFileConfig
 import studio.singlethread.lib.framework.bukkit.di.ReflectiveComponentResolver
 import studio.singlethread.lib.framework.bukkit.event.BukkitEventCaller
-import studio.singlethread.lib.framework.bukkit.event.BukkitEventRegistrar
 import studio.singlethread.lib.framework.bukkit.event.STEvent
 import studio.singlethread.lib.framework.bukkit.event.STListener
 import studio.singlethread.lib.framework.bukkit.gui.BukkitGuiService
-import studio.singlethread.lib.framework.bukkit.gui.StGui
-import studio.singlethread.lib.framework.bukkit.gui.StGuiDefinition
-import studio.singlethread.lib.framework.bukkit.gui.StGuiService
+import studio.singlethread.lib.framework.bukkit.gui.STGuiService
 import studio.singlethread.lib.framework.bukkit.management.STPluginDescriptor
 import studio.singlethread.lib.framework.bukkit.management.STPluginSnapshot
 import studio.singlethread.lib.framework.bukkit.management.STPlugins
 import studio.singlethread.lib.framework.bukkit.resource.BukkitResourceIntegrationRuntime
-import studio.singlethread.lib.framework.bukkit.support.PluginConventions
 import studio.singlethread.lib.framework.bukkit.text.BukkitTextParser
-import studio.singlethread.lib.framework.bukkit.translation.BukkitTranslationFacade
 import studio.singlethread.lib.framework.bukkit.lifecycle.support.CachedServicePropertyDelegate
 import studio.singlethread.lib.framework.bukkit.lifecycle.support.PluginCompatibilityVerifier
 import studio.singlethread.lib.framework.bukkit.lifecycle.support.PluginLoadRuntimeCoordinator
+import studio.singlethread.lib.framework.bukkit.lifecycle.support.STPluginRuntimeServices
+import studio.singlethread.lib.framework.bukkit.lifecycle.support.STPluginStartupLogger
 import studio.singlethread.lib.framework.bukkit.version.BukkitRuntimeResolver
 import studio.singlethread.lib.framework.bukkit.version.BukkitServerVersionResolver
 import studio.singlethread.lib.framework.bukkit.version.SupportedBukkitRuntimes
 import studio.singlethread.lib.framework.bukkit.version.SupportedServerVersions
 import studio.singlethread.lib.framework.bukkit.version.UnsupportedServerVersionAction
 import studio.singlethread.lib.framework.core.kernel.DefaultSTKernel
-import studio.singlethread.lib.framework.core.text.MiniMessageTextService
 import studio.singlethread.lib.platform.common.capability.CapabilityNames
-import studio.singlethread.lib.registry.common.provider.ResourceProvider
 import studio.singlethread.lib.registry.common.service.ResourceService
 import studio.singlethread.lib.storage.api.Storage
 import studio.singlethread.lib.storage.api.StorageApi
-import java.nio.file.Path
 import java.time.Instant
-import java.time.Duration
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 
 @Suppress("DEPRECATION")
 abstract class STPlugin(
@@ -94,11 +64,26 @@ abstract class STPlugin(
     private var compatibilitySupported = true
     @Volatile
     private var debugLoggingEnabled = false
+    private var bootstrapDiagnostics: BootstrapDiagnostics? = null
     private var guiBootstrap: BukkitGuiService? = null
     private var diScanSummary: ComponentScanSummary? = null
-    private val bridgeSubscriptions = CopyOnWriteArrayList<BridgeSubscription>()
     private val componentResolver: ReflectiveComponentResolver by lazy(LazyThreadSafetyMode.NONE) {
         ReflectiveComponentResolver(owner = this, kernel = kernel)
+    }
+    private val runtimeServices: STPluginRuntimeServices by lazy(LazyThreadSafetyMode.NONE) {
+        STPluginRuntimeServices(
+            plugin = this,
+            kernel = kernel,
+            capabilityRegistry = capabilityRegistry,
+            logger = logger,
+        )
+    }
+    private val startupLogger: STPluginStartupLogger by lazy(LazyThreadSafetyMode.NONE) {
+        STPluginStartupLogger(
+            logger = logger,
+            pluginName = description.name.ifBlank { name },
+            debugEnabled = { debugLoggingEnabled },
+        )
     }
 
     protected val capabilityRegistry: CapabilityRegistry
@@ -124,9 +109,9 @@ abstract class STPlugin(
 
     protected val storage: Storage by required { kernel.requireService() }
 
-    protected val bridge: BridgeService by required { kernel.requireService() }
+    protected val bridge: studio.singlethread.lib.framework.api.bridge.BridgeService by required { kernel.requireService() }
 
-    protected val guiService: StGuiService by required { kernel.requireService() }
+    protected val gui: STGuiService by required { kernel.requireService() }
 
     protected val resource: ResourceService by required { kernel.requireService() }
 
@@ -186,388 +171,21 @@ abstract class STPlugin(
             .ifBlank { "unknown" }
     }
 
-    protected fun mini(message: String, placeholders: Map<String, String> = emptyMap()): Component {
-        return bukkitTextParser.parse(message, placeholders)
+    protected fun console(message: String, placeholders: Map<String, String> = emptyMap()) {
+        server.consoleSender.sendMessage(bukkitTextParser.parse(message, placeholders))
     }
 
-    protected fun mini(
-        sender: CommandSender,
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-        usePlaceholderApi: Boolean = true,
-    ): Component {
-        return bukkitTextParser.parse(sender, message, placeholders, usePlaceholderApi)
-    }
-
-    protected fun gui(
-        rows: Int,
-        title: String,
-        placeholders: Map<String, String> = emptyMap(),
-        definition: StGuiDefinition,
-    ): StGui {
-        return guiService.create(
-            rows = rows,
-            title = mini(title, placeholders),
-            definition = definition,
+    protected fun send(sender: CommandSender, message: String, placeholders: Map<String, String> = emptyMap()) {
+        sender.sendMessage(
+            bukkitTextParser.parse(
+                sender = sender,
+                message = message,
+                placeholders = placeholders,
+            ),
         )
     }
 
-    protected fun gui(
-        rows: Int,
-        title: Component,
-        definition: StGuiDefinition,
-    ): StGui {
-        return guiService.create(
-            rows = rows,
-            title = title,
-            definition = definition,
-        )
-    }
-
-    protected fun gui(
-        definition: StGuiDefinition,
-    ): StGui {
-        return gui(
-            rows = 6,
-            title = Component.empty(),
-            definition = definition,
-        )
-    }
-
-    protected fun gui(
-        title: String,
-        size: Int,
-        type: InventoryType,
-        placeholders: Map<String, String> = emptyMap(),
-        definition: StGuiDefinition,
-    ): StGui {
-        return guiService.create(
-            size = size,
-            title = mini(title, placeholders),
-            type = type,
-            definition = definition,
-        )
-    }
-
-    protected fun gui(
-        title: Component,
-        size: Int,
-        type: InventoryType,
-        definition: StGuiDefinition,
-    ): StGui {
-        return guiService.create(
-            size = size,
-            title = title,
-            type = type,
-            definition = definition,
-        )
-    }
-
-    protected fun translate(
-        key: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ): Component {
-        return translationFacade().translate(key, placeholders)
-    }
-
-    protected fun translate(
-        sender: CommandSender,
-        key: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ): Component {
-        return translationFacade().translate(sender, key, placeholders)
-    }
-
-    protected fun sendTranslated(
-        sender: CommandSender,
-        key: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        translationFacade().sendTranslated(sender, key, placeholders)
-    }
-
-    protected fun reloadTranslations() {
-        translationFacade().reloadTranslations()
-    }
-
-    protected fun broadcast(
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-        prefixed: Boolean = false,
-    ) {
-        val component = if (prefixed) notifier.prefixed(message, placeholders) else notifier.message(message, placeholders)
-        server.onlinePlayers.forEach { player -> player.sendMessage(component) }
-        server.consoleSender.sendMessage(component)
-    }
-
-    protected fun broadcastTranslated(
-        key: String,
-        placeholders: Map<String, String> = emptyMap(),
-        prefixed: Boolean = false,
-    ) {
-        val translated = translation.translate(key = key, placeholders = placeholders)
-        broadcast(message = translated, prefixed = prefixed)
-    }
-
-    protected fun console(
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        server.consoleSender.sendMessage(mini(message, placeholders))
-    }
-
-    protected fun send(
-        sender: CommandSender,
-        message: String,
-        placeholders: Map<String, String> = emptyMap(),
-    ) {
-        sender.sendMessage(mini(sender, message, placeholders))
-    }
-
-    protected fun sync(task: Runnable): ScheduledTask {
-        return scheduler.runSync(task)
-    }
-
-    protected fun async(task: Runnable): ScheduledTask {
-        return scheduler.runAsync(task)
-    }
-
-    protected fun later(
-        delayTicks: Long,
-        task: Runnable,
-    ): ScheduledTask {
-        return scheduler.runLater(delayTicks, task)
-    }
-
-    protected fun timer(
-        delayTicks: Long,
-        periodTicks: Long,
-        task: Runnable,
-    ): ScheduledTask {
-        return scheduler.runTimer(delayTicks, periodTicks, task)
-    }
-
-    protected fun later(
-        delay: Long,
-        unit: TimeUnit,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runDelayed(DelaySchedule.sync(delay, unit), task)
-    }
-
-    protected fun later(
-        delay: Duration,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runDelayed(DelaySchedule.sync(delay), task)
-    }
-
-    protected fun asyncLater(
-        delay: Long,
-        unit: TimeUnit,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runDelayed(DelaySchedule.async(delay, unit), task)
-    }
-
-    protected fun asyncLater(
-        delay: Duration,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runDelayed(DelaySchedule.async(delay), task)
-    }
-
-    protected fun timer(
-        delay: Long,
-        period: Long,
-        unit: TimeUnit,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runRepeating(RepeatSchedule.sync(delay, period, unit), task)
-    }
-
-    protected fun timer(
-        delay: Duration,
-        period: Duration,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runRepeating(RepeatSchedule.sync(delay, period), task)
-    }
-
-    protected fun asyncTimer(
-        delay: Long,
-        period: Long,
-        unit: TimeUnit,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runRepeating(RepeatSchedule.async(delay, period, unit), task)
-    }
-
-    protected fun asyncTimer(
-        delay: Duration,
-        period: Duration,
-        task: Runnable,
-    ): ChainedScheduledTask {
-        return scheduler.runRepeating(RepeatSchedule.async(delay, period), task)
-    }
-
-    protected fun <T : Any> registerConfig(fileName: String, type: Class<T>): T {
-        return configRegistry.register(fileName, type)
-    }
-
-    protected fun <T> registerConfig(
-        fileName: String,
-        type: Class<T>,
-        migrationPlan: ConfigMigrationPlan<T>,
-    ): T where T : Any, T : VersionedConfig {
-        return configRegistry.register(fileName, type, migrationPlan)
-    }
-
-    protected inline fun <reified T : Any> registerConfig(fileName: String): T {
-        return registerConfig(fileName, T::class.java)
-    }
-
-    protected inline fun <reified T> registerConfig(
-        fileName: String,
-        migrationPlan: ConfigMigrationPlan<T>,
-    ): T where T : Any, T : VersionedConfig {
-        return registerConfig(fileName, T::class.java, migrationPlan)
-    }
-
-    protected fun <T : Any> currentConfig(fileName: String, type: Class<T>): T? {
-        return configRegistry.current(fileName, type)
-    }
-
-    protected inline fun <reified T : Any> currentConfig(fileName: String): T? {
-        return currentConfig(fileName, T::class.java)
-    }
-
-    protected fun reloadAllConfigs(): Map<String, Any> {
-        return configRegistry.reloadAll()
-    }
-
-    protected fun bridgeNodeId(): BridgeNodeId {
-        return bridge.nodeId()
-    }
-
-    protected fun bridgeChannel(
-        namespace: String,
-        key: String,
-    ): BridgeChannel {
-        return BridgeChannel.of(namespace, key)
-    }
-
-    protected fun publish(
-        channel: String,
-        payload: String,
-    ) {
-        bridge.publish(channel, payload)
-    }
-
-    protected fun publish(
-        channel: BridgeChannel,
-        payload: String,
-    ) {
-        bridge.publish(channel, payload)
-    }
-
-    protected fun <T : Any> publish(
-        channel: BridgeChannel,
-        payload: T,
-        codec: BridgeCodec<T>,
-    ) {
-        bridge.publish(channel, payload, codec)
-    }
-
-    protected fun subscribe(
-        channel: String,
-        listener: BridgeListener,
-    ): BridgeSubscription {
-        val subscription = bridge.subscribe(channel, listener)
-        bridgeSubscriptions += subscription
-        return subscription
-    }
-
-    protected fun subscribe(
-        channel: BridgeChannel,
-        listener: BridgeListener,
-    ): BridgeSubscription {
-        val subscription = bridge.subscribe(channel, listener)
-        bridgeSubscriptions += subscription
-        return subscription
-    }
-
-    protected fun <T : Any> subscribe(
-        channel: BridgeChannel,
-        codec: BridgeCodec<T>,
-        listener: BridgePayloadListener<T>,
-    ): BridgeSubscription {
-        val subscription = bridge.subscribe(channel, codec) { message ->
-            listener.onMessage(message.payload)
-        }
-        bridgeSubscriptions += subscription
-        return subscription
-    }
-
-    protected fun <Req : Any, Res : Any> respond(
-        channel: BridgeChannel,
-        requestCodec: BridgeCodec<Req>,
-        responseCodec: BridgeCodec<Res>,
-        handler: BridgeRequestHandler<Req, Res>,
-    ): BridgeSubscription {
-        val subscription = bridge.respond(channel, requestCodec, responseCodec, handler)
-        bridgeSubscriptions += subscription
-        return subscription
-    }
-
-    protected fun <Req : Any, Res : Any> request(
-        channel: BridgeChannel,
-        payload: Req,
-        requestCodec: BridgeCodec<Req>,
-        responseCodec: BridgeCodec<Res>,
-        targetNode: BridgeNodeId? = null,
-    ): CompletableFuture<BridgeResponse<Res>> {
-        val timeout =
-            kernel.service(BridgeRuntimeInfo::class)
-                ?.requestTimeoutMillis
-                ?: BridgeService.DEFAULT_TIMEOUT_MILLIS
-        return request(
-            channel = channel,
-            payload = payload,
-            requestCodec = requestCodec,
-            responseCodec = responseCodec,
-            timeoutMillis = timeout,
-            targetNode = targetNode,
-        )
-    }
-
-    protected fun <Req : Any, Res : Any> request(
-        channel: BridgeChannel,
-        payload: Req,
-        requestCodec: BridgeCodec<Req>,
-        responseCodec: BridgeCodec<Res>,
-        timeoutMillis: Long,
-        targetNode: BridgeNodeId? = null,
-    ): CompletableFuture<BridgeResponse<Res>> {
-        return bridge.request(
-            channel = channel,
-            payload = payload,
-            requestCodec = requestCodec,
-            responseCodec = responseCodec,
-            timeoutMillis = timeoutMillis,
-            targetNode = targetNode,
-        )
-    }
-
-    protected fun unsubscribe(subscription: BridgeSubscription) {
-        subscription.unsubscribe()
-        bridgeSubscriptions.remove(subscription)
-    }
-
-    protected fun command(
-        name: String,
-        tree: CommandTree,
-    ) {
+    protected fun command(name: String, tree: CommandTree) {
         registerCommandWithMetrics(commandDsl(name, tree))
     }
 
@@ -594,65 +212,6 @@ abstract class STPlugin(
         repeat(instrumented.executableEndpointCount()) {
             STPlugins.markCommandRegistered(this.name)
         }
-    }
-
-    protected fun permission(node: String): String {
-        return PluginConventions.permission(name, node)
-    }
-
-    protected fun can(sender: CommandSender, node: String): Boolean {
-        return sender.hasPermission(permission(node))
-    }
-
-    protected fun configPath(fileName: String): Path {
-        return PluginConventions.configPath(dataFolder.toPath(), fileName)
-    }
-
-    protected fun <T : Any> loadConfig(fileName: String, type: Class<T>): T {
-        return configService.load(configPath(fileName), type)
-    }
-
-    protected inline fun <reified T : Any> loadConfig(fileName: String): T {
-        return loadConfig(fileName, T::class.java)
-    }
-
-    protected fun <T : Any> reloadConfig(fileName: String, type: Class<T>): T {
-        return configService.reload(configPath(fileName), type)
-    }
-
-    protected fun <T> reloadConfig(
-        fileName: String,
-        type: Class<T>,
-        migrationPlan: ConfigMigrationPlan<T>,
-    ): T where T : Any, T : VersionedConfig {
-        return configRegistry.reload(fileName, type, migrationPlan)
-    }
-
-    protected inline fun <reified T : Any> reloadConfig(fileName: String): T {
-        return reloadConfig(fileName, T::class.java)
-    }
-
-    protected inline fun <reified T> reloadConfig(
-        fileName: String,
-        migrationPlan: ConfigMigrationPlan<T>,
-    ): T where T : Any, T : VersionedConfig {
-        return reloadConfig(fileName, T::class.java, migrationPlan)
-    }
-
-    protected fun <T : Any> saveConfig(fileName: String, value: T, type: Class<T>) {
-        configService.save(configPath(fileName), value, type)
-    }
-
-    protected inline fun <reified T : Any> saveConfig(fileName: String, value: T) {
-        saveConfig(fileName, value, T::class.java)
-    }
-
-    protected fun registerResourceProvider(provider: ResourceProvider) {
-        resource.registerProvider(provider)
-    }
-
-    protected fun unregisterResourceProvider(providerId: String): Boolean {
-        return resource.unregisterProvider(providerId)
     }
 
     protected fun listen(listener: Listener) {
@@ -689,35 +248,8 @@ abstract class STPlugin(
         return eventCaller().fire(event)
     }
 
-    protected fun allPlugins(): List<STPluginSnapshot> {
-        return STPlugins.all()
-    }
-
     protected fun diComponentSummary(): ComponentScanSummary? {
         return diScanSummary
-    }
-
-    protected fun findPlugin(pluginName: String): STPluginSnapshot? {
-        return STPlugins.find(pluginName)
-    }
-
-    protected fun configureCommandMetrics(enabled: Boolean) {
-        STPlugins.configureCommandMetrics(enabled)
-    }
-
-    protected fun isCommandMetricsEnabled(): Boolean {
-        return STPlugins.isCommandMetricsEnabled()
-    }
-
-    protected fun isDebugEnabled(): Boolean {
-        return debugLoggingEnabled
-    }
-
-    protected fun debug(message: String) {
-        if (!debugLoggingEnabled) {
-            return
-        }
-        logger.info("[debug] $message")
     }
 
     private fun <T> required(resolve: () -> T): CachedServicePropertyDelegate<T> {
@@ -726,13 +258,6 @@ abstract class STPlugin(
 
     private fun eventCaller(): BukkitEventCaller {
         return kernel.requireService()
-    }
-
-    private fun translationFacade(): BukkitTranslationFacade {
-        return BukkitTranslationFacade(
-            translationService = translation,
-            textParser = bukkitTextParser,
-        )
     }
 
     final override fun onLoad() {
@@ -768,6 +293,8 @@ abstract class STPlugin(
             return
         }
 
+        bootstrapDiagnostics?.let(startupLogger::logBootstrapReady)
+
         val commandApiEnabled = runCatching {
             CommandApiLifecycle.onEnable(this)
         }.onFailure { error ->
@@ -783,6 +310,7 @@ abstract class STPlugin(
         enable()
         STPlugins.markEnabled(name)
         syncCapabilitySummary()
+        startupLogger.logEnabledSuccessfully()
     }
 
     final override fun onDisable() {
@@ -848,8 +376,10 @@ abstract class STPlugin(
     private fun bootstrapKernel(): Boolean {
         kernelBootstrapped =
             runCatching {
-                BukkitKernelBootstrapper.bootstrap(this, kernel, pluginVersion())
+                val diagnostics = BukkitKernelBootstrapper.bootstrap(this, kernel, pluginVersion())
+                bootstrapDiagnostics = diagnostics
             }.onFailure { error ->
+                bootstrapDiagnostics = null
                 logger.severe("STPlugin kernel bootstrap failed: ${error.message}")
             }.isSuccess
         return kernelBootstrapped
@@ -885,55 +415,20 @@ abstract class STPlugin(
     }
 
     protected open fun registerDefaultServices() {
-        kernel.registerService(TextService::class, MiniMessageTextService())
-        kernel.registerService(
-            CommandRegistrar::class,
-            BukkitCommandRegistrar(this) { isDebugEnabled() },
-        )
-        val bukkitEventRegistrar = BukkitEventRegistrar(this)
-        val bukkitEventCaller = BukkitEventCaller(this)
-        kernel.registerService(EventRegistrar::class, bukkitEventRegistrar)
-        kernel.registerService(BukkitEventRegistrar::class, bukkitEventRegistrar)
-        kernel.registerService(BukkitEventCaller::class, bukkitEventCaller)
-        val guiService = BukkitGuiService(this)
-        guiBootstrap = guiService
-        kernel.registerService(StGuiService::class, guiService)
-        kernel.registerService(BukkitGuiService::class, guiService)
-        capabilityRegistry.disable(CapabilityNames.UI_INVENTORY, "Waiting for plugin enable")
+        guiBootstrap = runtimeServices.registerDefaultServices { debugLoggingEnabled }
     }
 
     private fun cleanupRuntimeResources() {
-        bridgeSubscriptions.toList().forEach { subscription ->
-            runCatching { subscription.unsubscribe() }
-        }
-        bridgeSubscriptions.clear()
-        runCatching { kernel.service(BukkitResourceIntegrationRuntime::class)?.shutdown() }
-        runCatching { guiService.close() }
+        runtimeServices.cleanupRuntimeResources(guiService = kernel.service(STGuiService::class))
         guiBootstrap = null
     }
 
     private fun activateResourceIntegrations() {
-        runCatching { kernel.service(BukkitResourceIntegrationRuntime::class)?.activate() }
-            .onFailure { error ->
-                logger.warning("Resource integration runtime activation failed: ${error.message}")
-            }
+        runtimeServices.activateResourceIntegrations()
     }
 
     private fun activateGui() {
-        val service = guiBootstrap ?: return
-        runCatching {
-            service.activate()
-        }.onSuccess {
-            capabilityRegistry.enable(CapabilityNames.UI_INVENTORY)
-            syncCapabilitySummary()
-        }.onFailure { error ->
-            capabilityRegistry.disable(
-                CapabilityNames.UI_INVENTORY,
-                "GUI activation failed: ${error.message ?: "unknown"}",
-            )
-            logger.warning("GUI service activation failed: ${error.message}")
-            syncCapabilitySummary()
-        }
+        runtimeServices.activateGui(guiService = guiBootstrap, syncCapabilitySummary = ::syncCapabilitySummary)
     }
 
     private fun syncCapabilitySummary() {

@@ -4,6 +4,7 @@ import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
 import studio.singlethread.lib.framework.api.bridge.BridgeIncomingMessage
 import studio.singlethread.lib.framework.api.bridge.BridgeListener
+import studio.singlethread.lib.framework.api.bridge.BridgeMetricsSnapshot
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestContext
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
@@ -19,19 +20,39 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class InMemoryBridgeService(
     private val localNodeId: BridgeNodeId = BridgeNodeId("local"),
+    private val maxPendingRequests: Int = DEFAULT_MAX_PENDING_REQUESTS,
+    private val callbackFailureReporter: (phase: String, error: Throwable) -> Unit = { _, _ -> },
 ) : BridgeService {
     private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<BridgeTypedListener<String>>>()
     private val requestHandlers = ConcurrentHashMap<String, CopyOnWriteArrayList<RegisteredRequestHandler>>()
     private val closed = AtomicBoolean(false)
-    private val requestExecutor = Executors.newCachedThreadPool()
+    private val requestExecutor =
+        Executors.newFixedThreadPool(
+            REQUEST_EXECUTOR_THREADS,
+            NamedBridgeThreadFactory("stlib-bridge-local-worker"),
+        )
     private val timeoutScheduler = Executors.newSingleThreadScheduledExecutor()
+    private val inFlightRequests = AtomicInteger(0)
+    private val pendingRequests = ConcurrentHashMap<String, PendingRequest>()
+    private val metrics = BridgeMetricsRecorder(pendingRequests = { inFlightRequests.get() })
+
+    init {
+        require(maxPendingRequests > 0) { "maxPendingRequests must be > 0" }
+    }
 
     override fun nodeId(): BridgeNodeId {
         return localNodeId
+    }
+
+    override fun metrics(): BridgeMetricsSnapshot {
+        return metrics.snapshot()
     }
 
     override fun publish(
@@ -41,6 +62,7 @@ class InMemoryBridgeService(
         if (closed.get()) {
             return
         }
+        metrics.markPublished()
 
         val key = normalize(channel)
         subscribers[key]
@@ -53,6 +75,8 @@ class InMemoryBridgeService(
                             sourceNode = localNodeId,
                         ),
                     )
+                }.onFailure { error ->
+                    callbackFailureReporter("publish:${channel.asString()}", error)
                 }
             }
     }
@@ -100,9 +124,49 @@ class InMemoryBridgeService(
         val handlers = requestHandlers.computeIfAbsent(key) { CopyOnWriteArrayList() }
         val registration =
             RegisteredRequestHandler(
-                requestCodec = requestCodec as BridgeCodec<Any>,
-                responseCodec = responseCodec as BridgeCodec<Any>,
-                handler = handler as BridgeRequestHandler<Any, Any>,
+                tryHandle = { invocation ->
+                    val decodedRequest =
+                        runCatching { requestCodec.decode(invocation.encodedPayload) }
+                            .getOrNull()
+                            ?: return@RegisteredRequestHandler null
+
+                    runCatching {
+                        val result =
+                            handler.handle(
+                                BridgeRequestContext(
+                                    requestId = invocation.requestId,
+                                    channel = invocation.channel,
+                                    payload = decodedRequest,
+                                    sourceNode = invocation.sourceNode,
+                                    targetNode = invocation.targetNode,
+                                ),
+                            )
+
+                        if (result.status != BridgeResponseStatus.SUCCESS) {
+                            return@runCatching HandlerInvocationOutcome(
+                                status = result.status,
+                                message = result.message,
+                            )
+                        }
+
+                        val rawPayload =
+                            result.payload
+                                ?: return@runCatching HandlerInvocationOutcome(
+                                    status = BridgeResponseStatus.ERROR,
+                                    message = "handler returned SUCCESS without payload",
+                                )
+
+                        HandlerInvocationOutcome(
+                            status = BridgeResponseStatus.SUCCESS,
+                            encodedResponsePayload = responseCodec.encode(rawPayload),
+                        )
+                    }.getOrElse { error ->
+                        HandlerInvocationOutcome(
+                            status = BridgeResponseStatus.ERROR,
+                            message = error.message ?: "request execution failed",
+                        )
+                    }
+                },
             )
         handlers += registration
 
@@ -122,7 +186,22 @@ class InMemoryBridgeService(
         timeoutMillis: Long,
         targetNode: BridgeNodeId?,
     ): CompletableFuture<BridgeResponse<Res>> {
+        metrics.markRequestSubmitted()
+        if (inFlightRequests.incrementAndGet() > maxPendingRequests) {
+            inFlightRequests.decrementAndGet()
+            metrics.markRequestRejectedBackpressure()
+            return completedResponse(
+                BridgeResponse(
+                    status = BridgeResponseStatus.ERROR,
+                    message = "bridge backpressure: pending request limit exceeded (max=$maxPendingRequests)",
+                    responderNode = localNodeId,
+                ),
+            )
+        }
+
         if (closed.get()) {
+            inFlightRequests.decrementAndGet()
+            metrics.markRequestErrored()
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.ERROR,
@@ -133,6 +212,8 @@ class InMemoryBridgeService(
         }
 
         if (targetNode != null && targetNode != localNodeId) {
+            inFlightRequests.decrementAndGet()
+            metrics.markRequestNoHandler()
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.NO_HANDLER,
@@ -143,8 +224,10 @@ class InMemoryBridgeService(
         }
 
         val key = normalize(channel)
-        val registration = requestHandlers[key]?.firstOrNull()
-        if (registration == null) {
+        val handlers = requestHandlers[key]
+        if (handlers.isNullOrEmpty()) {
+            inFlightRequests.decrementAndGet()
+            metrics.markRequestNoHandler()
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.NO_HANDLER,
@@ -154,27 +237,70 @@ class InMemoryBridgeService(
             )
         }
 
+        val encodedRequestPayload =
+            runCatching { requestCodec.encode(payload) }
+                .getOrElse { error ->
+                    inFlightRequests.decrementAndGet()
+                    metrics.markDecodeFailure()
+                    metrics.markRequestErrored()
+                    return completedResponse(
+                        BridgeResponse(
+                            status = BridgeResponseStatus.ERROR,
+                            message = error.message ?: "failed to encode bridge request payload",
+                            responderNode = localNodeId,
+                        ),
+                    )
+                }
+        val requestId = BridgeService.nextRequestId()
         val responseFuture = CompletableFuture<BridgeResponse<Res>>()
-        val timeoutTask = scheduleTimeout(responseFuture, timeoutMillis)
+        @Suppress("UNCHECKED_CAST")
+        val pending =
+            PendingRequest(
+                future = responseFuture as CompletableFuture<BridgeResponse<*>>,
+            )
+        pendingRequests[requestId] = pending
+        if (timeoutMillis > 0L) {
+            pending.timeoutTask.set(
+                timeoutScheduler.schedule(
+                    {
+                        completePending(
+                            requestId = requestId,
+                            response =
+                                BridgeResponse<Any>(
+                                    status = BridgeResponseStatus.TIMEOUT,
+                                    message = TimeoutException("bridge request timed out after ${timeoutMillis}ms").message,
+                                    responderNode = null,
+                                ),
+                        )
+                    },
+                    timeoutMillis,
+                    TimeUnit.MILLISECONDS,
+                ),
+            )
+        }
+        responseFuture.whenComplete { _, _ ->
+            cleanupPendingRequest(requestId)
+        }
 
         CompletableFuture
             .supplyAsync(
                 {
                     invokeHandler(
+                        requestId = requestId,
                         channel = channel,
-                        payload = payload,
-                        requestCodec = requestCodec,
                         responseCodec = responseCodec,
-                        registration = registration,
+                        handlers = handlers,
+                        encodedRequestPayload = encodedRequestPayload,
                         targetNode = targetNode,
                     )
                 },
                 requestExecutor,
             ).whenComplete { response, error ->
-                timeoutTask?.cancel(false)
                 if (error != null) {
-                    responseFuture.complete(
-                        BridgeResponse(
+                    completePending(
+                        requestId = requestId,
+                        response =
+                        BridgeResponse<Any>(
                             status = BridgeResponseStatus.ERROR,
                             message = error.message ?: "request execution failed",
                             responderNode = localNodeId,
@@ -183,9 +309,8 @@ class InMemoryBridgeService(
                     return@whenComplete
                 }
 
-                responseFuture.complete(response)
+                completePending(requestId = requestId, response = response)
             }
-
         return responseFuture
     }
 
@@ -196,105 +321,168 @@ class InMemoryBridgeService(
 
         subscribers.clear()
         requestHandlers.clear()
+        failAllPendingRequests()
         requestExecutor.shutdownNow()
         timeoutScheduler.shutdownNow()
     }
 
-    private fun <Req : Any, Res : Any> invokeHandler(
+    private fun completePending(
+        requestId: String,
+        response: BridgeResponse<*>,
+    ): Boolean {
+        val pending = pendingRequests.remove(requestId) ?: return false
+        if (!pending.completed.compareAndSet(false, true)) {
+            return false
+        }
+
+        pending.timeoutTask.get()?.cancel(false)
+        pending.future.complete(response)
+        inFlightRequests.decrementAndGet()
+        markRequestStatus(response.status)
+        return true
+    }
+
+    private fun cleanupPendingRequest(requestId: String) {
+        val pending = pendingRequests.remove(requestId) ?: return
+        if (!pending.completed.compareAndSet(false, true)) {
+            return
+        }
+
+        pending.timeoutTask.get()?.cancel(false)
+        inFlightRequests.decrementAndGet()
+        metrics.markRequestErrored()
+    }
+
+    private fun failAllPendingRequests() {
+        val requestIds = pendingRequests.keys.toList()
+        requestIds.forEach { requestId ->
+            completePending(
+                requestId = requestId,
+                response =
+                    BridgeResponse<Any>(
+                        status = BridgeResponseStatus.ERROR,
+                        message = "bridge is closed",
+                        responderNode = localNodeId,
+                    ),
+            )
+        }
+    }
+
+    private fun <Res : Any> invokeHandler(
+        requestId: String,
         channel: BridgeChannel,
-        payload: Req,
-        requestCodec: BridgeCodec<Req>,
         responseCodec: BridgeCodec<Res>,
-        registration: RegisteredRequestHandler,
+        handlers: List<RegisteredRequestHandler>,
+        encodedRequestPayload: String,
         targetNode: BridgeNodeId?,
     ): BridgeResponse<Res> {
-        val requestId = BridgeService.nextRequestId()
+        val invocation =
+            BridgeRequestInvocation(
+                requestId = requestId,
+                channel = channel,
+                encodedPayload = encodedRequestPayload,
+                sourceNode = localNodeId,
+                targetNode = targetNode,
+            )
 
-        return runCatching {
-            val encodedRequest = requestCodec.encode(payload)
-            val decodedRequest = registration.requestCodec.decode(encodedRequest)
-
-            val handlerResult =
-                registration.handler.handle(
-                    BridgeRequestContext(
-                        requestId = requestId,
-                        channel = channel,
-                        payload = decodedRequest,
-                        sourceNode = localNodeId,
-                        targetNode = targetNode,
-                    ),
-                )
-
-            if (handlerResult.status != BridgeResponseStatus.SUCCESS) {
+        handlers.forEach { registration ->
+            val outcome = registration.tryHandle(invocation) ?: return@forEach
+            if (outcome.status != BridgeResponseStatus.SUCCESS) {
                 return BridgeResponse(
-                    status = handlerResult.status,
-                    message = handlerResult.message,
+                    status = outcome.status,
+                    message = outcome.message,
                     responderNode = localNodeId,
                 )
             }
 
-            val rawResponsePayload =
-                handlerResult.payload
+            val encodedResponsePayload =
+                outcome.encodedResponsePayload
                     ?: return BridgeResponse(
                         status = BridgeResponseStatus.ERROR,
                         message = "handler returned SUCCESS without payload",
                         responderNode = localNodeId,
                     )
-
-            val encodedResponse = registration.responseCodec.encode(rawResponsePayload)
-            val decodedResponse = responseCodec.decode(encodedResponse)
-
-            BridgeResponse(
-                status = BridgeResponseStatus.SUCCESS,
-                payload = decodedResponse,
-                responderNode = localNodeId,
-            )
-        }.getOrElse { error ->
-            BridgeResponse(
-                status = BridgeResponseStatus.ERROR,
-                message = error.message ?: "request execution failed",
-                responderNode = localNodeId,
-            )
+            return runCatching {
+                BridgeResponse(
+                    status = BridgeResponseStatus.SUCCESS,
+                    payload = responseCodec.decode(encodedResponsePayload),
+                    responderNode = localNodeId,
+                )
+            }.getOrElse { error ->
+                metrics.markDecodeFailure()
+                BridgeResponse(
+                    status = BridgeResponseStatus.ERROR,
+                    message = error.message ?: "failed to decode bridge response payload",
+                    responderNode = localNodeId,
+                )
+            }
         }
+
+        return BridgeResponse(
+            status = BridgeResponseStatus.NO_HANDLER,
+            message = "no compatible request handler registered for channel ${channel.asString()}",
+            responderNode = null,
+        )
     }
 
-    private fun <Res : Any> scheduleTimeout(
-        future: CompletableFuture<BridgeResponse<Res>>,
-        timeoutMillis: Long,
-    ): ScheduledFuture<*>? {
-        if (timeoutMillis <= 0L) {
-            return null
-        }
+    private data class BridgeRequestInvocation(
+        val requestId: String,
+        val channel: BridgeChannel,
+        val encodedPayload: String,
+        val sourceNode: BridgeNodeId,
+        val targetNode: BridgeNodeId?,
+    )
 
-        return timeoutScheduler.schedule(
-            {
-                if (future.isDone) {
-                    return@schedule
-                }
-                future.complete(
-                    BridgeResponse(
-                        status = BridgeResponseStatus.TIMEOUT,
-                        message = TimeoutException("bridge request timed out after ${timeoutMillis}ms").message,
-                        responderNode = null,
-                    ),
-                )
-            },
-            timeoutMillis,
-            TimeUnit.MILLISECONDS,
-        )
+    private data class HandlerInvocationOutcome(
+        val status: BridgeResponseStatus,
+        val message: String? = null,
+        val encodedResponsePayload: String? = null,
+    )
+
+    private data class RegisteredRequestHandler(
+        val tryHandle: (BridgeRequestInvocation) -> HandlerInvocationOutcome?,
+    )
+
+    private data class PendingRequest(
+        val future: CompletableFuture<BridgeResponse<*>>,
+        val timeoutTask: AtomicReference<ScheduledFuture<*>?> = AtomicReference(null),
+        val completed: AtomicBoolean = AtomicBoolean(false),
+    )
+
+    private companion object {
+        private const val DEFAULT_MAX_PENDING_REQUESTS = 2_048
+        private val REQUEST_EXECUTOR_THREADS = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+    }
+
+    private class NamedBridgeThreadFactory(
+        private val prefix: String,
+    ) : java.util.concurrent.ThreadFactory {
+        private val delegate = Executors.defaultThreadFactory()
+        private val sequence = AtomicLong(0)
+
+        override fun newThread(runnable: Runnable): Thread {
+            val thread = delegate.newThread(runnable)
+            thread.name = "$prefix-${sequence.incrementAndGet()}"
+            thread.isDaemon = true
+            return thread
+        }
     }
 
     private fun normalize(channel: BridgeChannel): String {
         return channel.asString().trim().lowercase()
     }
 
+    private fun markRequestStatus(status: BridgeResponseStatus) {
+        when (status) {
+            BridgeResponseStatus.SUCCESS -> metrics.markRequestSucceeded()
+            BridgeResponseStatus.TIMEOUT -> metrics.markRequestTimedOut()
+            BridgeResponseStatus.NO_HANDLER -> metrics.markRequestNoHandler()
+            BridgeResponseStatus.ERROR -> metrics.markRequestErrored()
+        }
+    }
+
     private fun <T : Any> completedResponse(response: BridgeResponse<T>): CompletableFuture<BridgeResponse<T>> {
         return CompletableFuture.completedFuture(response)
     }
 
-    private data class RegisteredRequestHandler(
-        val requestCodec: BridgeCodec<Any>,
-        val responseCodec: BridgeCodec<Any>,
-        val handler: BridgeRequestHandler<Any, Any>,
-    )
 }

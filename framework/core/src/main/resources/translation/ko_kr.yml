@@ -1,8 +1,6 @@
 command:
   stlib:
     description: "STLib 런타임 상태를 출력합니다"
-  stlibgui:
-    description: "STPlugin 대시보드를 엽니다"
 stlib:
   lifecycle:
     initialize: "STLib 초기화 단계"
@@ -11,8 +9,9 @@ stlib:
     disabled: "STLib 비활성화 완료"
   log:
     command_invoked: "{sender} 가 /stlib 명령어를 실행했습니다"
-    gui_invoked: "{sender} 가 /stlibgui 명령어를 실행했습니다"
+    gui_invoked: "{sender} 가 /stlib gui 명령어를 실행했습니다"
     reload_invoked: "{sender} 가 /stlib reload 명령어를 실행했습니다"
+    doctor_invoked: "{sender} 가 /stlib doctor 명령어를 실행했습니다"
   command:
     player_only: "<red>이 명령어는 플레이어만 사용할 수 있습니다.</red>"
     backend: "STLib 저장소 백엔드: {backend}"
@@ -21,6 +20,15 @@ stlib:
     reload:
       success: "<green>리로드 완료:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}, scheduler={scheduler}, di={di_discovered}/{di_validated}, bridgeMode={bridge_mode}, bridgeDistributed={bridge_distributed}, bridgeNode={bridge_node}"
       failed: "<red>리로드 실패:</red> {reason}"
+    doctor:
+      generated_at: "<gray>진단 시각:</gray> <white>{time}</white>"
+      core: "<gray>CoreOps:</gray> profile={profile}, dashboard={dashboard}, persist={persist_enabled}/{persist_active}, scheduler={scheduler}, cmdMetrics={command_metrics}, di={di_discovered}/{di_validated}"
+      bridge: "<gray>Bridge:</gray> mode={mode}, distributed={distributed}, redisConnected={redis_connected}"
+      bridge_metrics: "<gray>Bridge 지표:</gray> pending={pending}, submitted={submitted}, timeouts={timeouts}, backpressureRejected={backpressure_rejected}, lateResponses={late_responses}, targetMismatch={target_mismatch}"
+      bridge_issues: "<yellow>Bridge 이슈:</yellow> {issues}"
+      plugins: "<gray>Plugins:</gray> total={total}, degraded={degraded}"
+      healthy: "<green>모든 STPlugin이 정상 상태입니다.</green>"
+      degraded_plugins: "<yellow>주의 플러그인:</yellow> {plugins}"
   gui:
     title:
       list: "<gold>STPlugin 대시보드</gold> <gray>({page}/{total})</gray>"

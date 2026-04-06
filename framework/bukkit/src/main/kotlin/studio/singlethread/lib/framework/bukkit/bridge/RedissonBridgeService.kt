@@ -1,11 +1,10 @@
 package studio.singlethread.lib.framework.bukkit.bridge
 
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
-import studio.singlethread.lib.framework.api.bridge.BridgeCodec
 import studio.singlethread.lib.framework.api.bridge.BridgeIncomingMessage
 import studio.singlethread.lib.framework.api.bridge.BridgeListener
+import studio.singlethread.lib.framework.api.bridge.BridgeMetricsSnapshot
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
-import studio.singlethread.lib.framework.api.bridge.BridgeRequestContext
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
 import studio.singlethread.lib.framework.api.bridge.BridgeResponse
 import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
@@ -13,28 +12,54 @@ import studio.singlethread.lib.framework.api.bridge.BridgeService
 import studio.singlethread.lib.framework.api.bridge.BridgeSubscription
 import studio.singlethread.lib.framework.api.bridge.BridgeTypedListener
 import studio.singlethread.lib.framework.bukkit.config.RedisBridgeSettings
-import java.lang.reflect.Proxy
-import java.nio.charset.StandardCharsets
-import java.util.Base64
+import studio.singlethread.lib.framework.bukkit.support.STCallbackFailureLogger
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.logging.Logger
 
 class RedissonBridgeService private constructor(
     private val localNodeId: BridgeNodeId,
     private val namespace: String,
     private val client: Any,
+    maxPendingRequests: Int,
+    private val logWarning: (String) -> Unit,
+    private val logger: Logger,
+    private val debugLoggingEnabled: () -> Boolean,
 ) : BridgeService {
     private val closed = AtomicBoolean(false)
-    private val requestHandlers = ConcurrentHashMap<String, CopyOnWriteArrayList<RegisteredRequestHandler>>()
-    private val requestListeners = ConcurrentHashMap<String, TopicListener>()
     private val timeoutExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+    private val transport =
+        RedissonTopicTransport(
+            client = client,
+            namespace = namespace,
+            logWarning = logWarning,
+            callbackFailureReporter = { phase, error ->
+                STCallbackFailureLogger.log(
+                    logger = logger,
+                    subsystem = "Bridge",
+                    phase = phase,
+                    error = error,
+                    debugEnabled = debugLoggingEnabled,
+                )
+            },
+        )
+    private val metrics = BridgeMetricsRecorder()
+    private val rpcDispatcher =
+        RedissonRpcDispatcher(
+            localNodeId = localNodeId,
+            transport = transport,
+            timeoutExecutor = timeoutExecutor,
+            maxPendingRequests = maxPendingRequests,
+            metrics = metrics,
+        )
 
     override fun nodeId(): BridgeNodeId = localNodeId
+
+    override fun metrics(): BridgeMetricsSnapshot {
+        return metrics.snapshot(pendingRequestsOverride = rpcDispatcher.pendingRequestCount())
+    }
 
     override fun publish(
         channel: BridgeChannel,
@@ -43,12 +68,15 @@ class RedissonBridgeService private constructor(
         if (closed.get()) {
             return
         }
-        publishTopic(
-            topicName(type = "pub", channel = channel),
-            PublishEnvelope(
-                sourceNode = localNodeId.value,
-                payload = payload,
-            ).encode(),
+        metrics.markPublished()
+        transport.publish(
+            type = "pub",
+            channel = channel,
+            payload =
+                PublishEnvelope(
+                    sourceNode = localNodeId.value,
+                    payload = payload,
+                ).encode(),
         )
     }
 
@@ -69,9 +97,8 @@ class RedissonBridgeService private constructor(
             return BridgeSubscription {}
         }
 
-        val topic = topicName(type = "pub", channel = channel)
-        val topicListener =
-            addTopicListener(topic) { payload ->
+        val token =
+            transport.addListener(type = "pub", channel = channel) { payload ->
                 val envelope = PublishEnvelope.decode(payload)
                 val sourceNode = envelope?.sourceNode?.ifBlank { null }
                 listener.onMessage(
@@ -84,46 +111,27 @@ class RedissonBridgeService private constructor(
             }
 
         return BridgeSubscription {
-            removeTopicListener(topicListener)
+            transport.removeListener(token)
         }
     }
 
     override fun <Req : Any, Res : Any> respond(
         channel: BridgeChannel,
-        requestCodec: BridgeCodec<Req>,
-        responseCodec: BridgeCodec<Res>,
+        requestCodec: studio.singlethread.lib.framework.api.bridge.BridgeCodec<Req>,
+        responseCodec: studio.singlethread.lib.framework.api.bridge.BridgeCodec<Res>,
         handler: BridgeRequestHandler<Req, Res>,
     ): BridgeSubscription {
         if (closed.get()) {
             return BridgeSubscription {}
         }
-
-        val key = normalize(channel)
-        val handlers = requestHandlers.computeIfAbsent(key) { CopyOnWriteArrayList() }
-        val registration =
-            RegisteredRequestHandler(
-                requestCodec = requestCodec as BridgeCodec<Any>,
-                responseCodec = responseCodec as BridgeCodec<Any>,
-                handler = handler as BridgeRequestHandler<Any, Any>,
-            )
-        handlers += registration
-
-        ensureRequestListener(channel)
-
-        return BridgeSubscription {
-            handlers -= registration
-            if (handlers.isEmpty()) {
-                requestHandlers.remove(key, handlers)
-                requestListeners.remove(key)?.let(::removeTopicListener)
-            }
-        }
+        return rpcDispatcher.registerResponder(channel, requestCodec, responseCodec, handler)
     }
 
     override fun <Req : Any, Res : Any> request(
         channel: BridgeChannel,
         payload: Req,
-        requestCodec: BridgeCodec<Req>,
-        responseCodec: BridgeCodec<Res>,
+        requestCodec: studio.singlethread.lib.framework.api.bridge.BridgeCodec<Req>,
+        responseCodec: studio.singlethread.lib.framework.api.bridge.BridgeCodec<Res>,
         timeoutMillis: Long,
         targetNode: BridgeNodeId?,
     ): CompletableFuture<BridgeResponse<Res>> {
@@ -136,104 +144,14 @@ class RedissonBridgeService private constructor(
                 ),
             )
         }
-
-        val requestId = BridgeService.nextRequestId()
-        val future = CompletableFuture<BridgeResponse<Res>>()
-        val responseTopic = topicName(type = "res", channel = channel)
-        val requestTopic = topicName(type = "req", channel = channel)
-
-        val responseListener =
-            addTopicListener(responseTopic) { payloadMessage ->
-                val envelope = ResponseEnvelope.decode(payloadMessage) ?: return@addTopicListener
-                if (envelope.requestId != requestId) {
-                    return@addTopicListener
-                }
-
-                if (future.isDone) {
-                    return@addTopicListener
-                }
-
-                val response =
-                    when (envelope.status) {
-                        BridgeResponseStatus.SUCCESS -> {
-                            val rawPayload = envelope.payload ?: ""
-                            runCatching {
-                                BridgeResponse(
-                                    status = BridgeResponseStatus.SUCCESS,
-                                    payload = responseCodec.decode(rawPayload),
-                                    responderNode = envelope.responderNode?.let(::BridgeNodeId),
-                                )
-                            }.getOrElse { error ->
-                                BridgeResponse(
-                                    status = BridgeResponseStatus.ERROR,
-                                    message = error.message ?: "failed to decode bridge response",
-                                    responderNode = envelope.responderNode?.let(::BridgeNodeId),
-                                )
-                            }
-                        }
-
-                        BridgeResponseStatus.NO_HANDLER ->
-                            BridgeResponse(
-                                status = BridgeResponseStatus.NO_HANDLER,
-                                message = envelope.message,
-                                responderNode = envelope.responderNode?.let(::BridgeNodeId),
-                            )
-
-                        BridgeResponseStatus.TIMEOUT ->
-                            BridgeResponse(
-                                status = BridgeResponseStatus.TIMEOUT,
-                                message = envelope.message,
-                                responderNode = envelope.responderNode?.let(::BridgeNodeId),
-                            )
-
-                        BridgeResponseStatus.ERROR ->
-                            BridgeResponse(
-                                status = BridgeResponseStatus.ERROR,
-                                message = envelope.message,
-                                responderNode = envelope.responderNode?.let(::BridgeNodeId),
-                            )
-                    }
-                future.complete(response)
-            }
-
-        val timeoutTask =
-            if (timeoutMillis <= 0L) {
-                null
-            } else {
-                timeoutExecutor.schedule(
-                    {
-                        if (future.isDone) {
-                            return@schedule
-                        }
-                        future.complete(
-                            BridgeResponse(
-                                status = BridgeResponseStatus.TIMEOUT,
-                                message = "bridge request timed out after ${timeoutMillis}ms",
-                                responderNode = null,
-                            ),
-                        )
-                    },
-                    timeoutMillis,
-                    TimeUnit.MILLISECONDS,
-                )
-            }
-
-        future.whenComplete { _, _ ->
-            timeoutTask?.cancel(false)
-            removeTopicListener(responseListener)
-        }
-
-        val encodedPayload = requestCodec.encode(payload)
-        val requestEnvelope =
-            RequestEnvelope(
-                requestId = requestId,
-                sourceNode = localNodeId.value,
-                targetNode = targetNode?.value,
-                payload = encodedPayload,
-            )
-        publishTopic(requestTopic, requestEnvelope.encode())
-
-        return future
+        return rpcDispatcher.request(
+            channel = channel,
+            payload = payload,
+            requestCodec = requestCodec,
+            responseCodec = responseCodec,
+            timeoutMillis = timeoutMillis,
+            targetNode = targetNode,
+        )
     }
 
     override fun close() {
@@ -241,257 +159,11 @@ class RedissonBridgeService private constructor(
             return
         }
 
-        requestListeners.values.forEach(::removeTopicListener)
-        requestListeners.clear()
-        requestHandlers.clear()
+        rpcDispatcher.close()
         timeoutExecutor.shutdownNow()
 
         runCatching {
             client.javaClass.getMethod("shutdown").invoke(client)
-        }
-    }
-
-    private fun ensureRequestListener(channel: BridgeChannel) {
-        val key = normalize(channel)
-        requestListeners.computeIfAbsent(key) {
-            val topic = topicName(type = "req", channel = channel)
-            addTopicListener(topic) { message ->
-                handleRequest(channel, message)
-            }
-        }
-    }
-
-    private fun handleRequest(
-        channel: BridgeChannel,
-        message: String,
-    ) {
-        val envelope = RequestEnvelope.decode(message) ?: return
-        if (envelope.targetNode != null && envelope.targetNode != localNodeId.value) {
-            return
-        }
-
-        val key = normalize(channel)
-        val registration = requestHandlers[key]?.firstOrNull()
-        if (registration == null) {
-            publishTopic(
-                topicName(type = "res", channel = channel),
-                ResponseEnvelope(
-                    requestId = envelope.requestId,
-                    status = BridgeResponseStatus.NO_HANDLER,
-                    message = "no handler registered",
-                    payload = null,
-                    responderNode = localNodeId.value,
-                ).encode(),
-            )
-            return
-        }
-
-        val responseEnvelope =
-            runCatching {
-                val decodedRequest = registration.requestCodec.decode(envelope.payload)
-                val result =
-                    registration.handler.handle(
-                        BridgeRequestContext(
-                            requestId = envelope.requestId,
-                            channel = channel,
-                            payload = decodedRequest,
-                            sourceNode = BridgeNodeId(envelope.sourceNode),
-                            targetNode = envelope.targetNode?.let(::BridgeNodeId),
-                        ),
-                    )
-
-                if (result.status != BridgeResponseStatus.SUCCESS) {
-                    return@runCatching ResponseEnvelope(
-                        requestId = envelope.requestId,
-                        status = result.status,
-                        message = result.message,
-                        payload = null,
-                        responderNode = localNodeId.value,
-                    )
-                }
-
-                val payload =
-                    result.payload?.let(registration.responseCodec::encode)
-                        ?: return@runCatching ResponseEnvelope(
-                            requestId = envelope.requestId,
-                            status = BridgeResponseStatus.ERROR,
-                            message = "handler returned SUCCESS without payload",
-                            payload = null,
-                            responderNode = localNodeId.value,
-                        )
-
-                ResponseEnvelope(
-                    requestId = envelope.requestId,
-                    status = BridgeResponseStatus.SUCCESS,
-                    message = null,
-                    payload = payload,
-                    responderNode = localNodeId.value,
-                )
-            }.getOrElse { error ->
-                ResponseEnvelope(
-                    requestId = envelope.requestId,
-                    status = BridgeResponseStatus.ERROR,
-                    message = error.message ?: "request execution failed",
-                    payload = null,
-                    responderNode = localNodeId.value,
-                )
-            }
-
-        publishTopic(topicName(type = "res", channel = channel), responseEnvelope.encode())
-    }
-
-    private fun publishTopic(
-        topicName: String,
-        payload: String,
-    ) {
-        runCatching {
-            val topic = topic(topicName)
-            topic.javaClass.getMethod("publish", Any::class.java).invoke(topic, payload)
-        }
-    }
-
-    private fun addTopicListener(
-        topicName: String,
-        consumer: (String) -> Unit,
-    ): TopicListener {
-        val topic = topic(topicName)
-        val listenerType = Class.forName("org.redisson.api.listener.MessageListener")
-
-        val proxy =
-            Proxy.newProxyInstance(
-                listenerType.classLoader,
-                arrayOf(listenerType),
-            ) { _, method, args ->
-                if (method.name == "onMessage" && args != null && args.size >= 2) {
-                    consumer(args[1]?.toString().orEmpty())
-                }
-                null
-            }
-
-        val addMethod = topic.javaClass.getMethod("addListener", Class::class.java, listenerType)
-        val listenerId = (addMethod.invoke(topic, String::class.java, proxy) as Number).toInt()
-        return TopicListener(topic = topic, listenerId = listenerId)
-    }
-
-    private fun removeTopicListener(listener: TopicListener) {
-        runCatching {
-            val removeMethod = listener.topic.javaClass.getMethod("removeListener", Int::class.javaPrimitiveType)
-            removeMethod.invoke(listener.topic, listener.listenerId)
-        }
-    }
-
-    private fun topic(name: String): Any {
-        return client.javaClass.getMethod("getTopic", String::class.java).invoke(client, name)
-    }
-
-    private fun topicName(
-        type: String,
-        channel: BridgeChannel,
-    ): String {
-        return "stlib:bridge:$namespace:$type:${normalize(channel)}"
-    }
-
-    private fun normalize(channel: BridgeChannel): String {
-        return channel.asString().lowercase()
-    }
-
-    private data class TopicListener(
-        val topic: Any,
-        val listenerId: Int,
-    )
-
-    private data class PublishEnvelope(
-        val sourceNode: String,
-        val payload: String,
-    ) {
-        fun encode(): String {
-            return listOf(sourceNode, encodeBase64(payload)).joinToString("|")
-        }
-
-        companion object {
-            fun decode(raw: String): PublishEnvelope? {
-                val parts = raw.split('|', limit = 2)
-                if (parts.size != 2) {
-                    return null
-                }
-                return PublishEnvelope(
-                    sourceNode = parts[0],
-                    payload = decodeBase64(parts[1]),
-                )
-            }
-        }
-    }
-
-    private data class RegisteredRequestHandler(
-        val requestCodec: BridgeCodec<Any>,
-        val responseCodec: BridgeCodec<Any>,
-        val handler: BridgeRequestHandler<Any, Any>,
-    )
-
-    private data class RequestEnvelope(
-        val requestId: String,
-        val sourceNode: String,
-        val targetNode: String?,
-        val payload: String,
-    ) {
-        fun encode(): String {
-            return listOf(
-                requestId,
-                sourceNode,
-                targetNode.orEmpty(),
-                encodeBase64(payload),
-            ).joinToString("|")
-        }
-
-        companion object {
-            fun decode(raw: String): RequestEnvelope? {
-                val parts = raw.split('|', limit = 4)
-                if (parts.size != 4) {
-                    return null
-                }
-                return RequestEnvelope(
-                    requestId = parts[0],
-                    sourceNode = parts[1],
-                    targetNode = parts[2].ifBlank { null },
-                    payload = decodeBase64(parts[3]),
-                )
-            }
-        }
-    }
-
-    private data class ResponseEnvelope(
-        val requestId: String,
-        val status: BridgeResponseStatus,
-        val message: String?,
-        val payload: String?,
-        val responderNode: String?,
-    ) {
-        fun encode(): String {
-            return listOf(
-                requestId,
-                status.name,
-                encodeBase64(message.orEmpty()),
-                encodeBase64(payload.orEmpty()),
-                responderNode.orEmpty(),
-            ).joinToString("|")
-        }
-
-        companion object {
-            fun decode(raw: String): ResponseEnvelope? {
-                val parts = raw.split('|', limit = 5)
-                if (parts.size != 5) {
-                    return null
-                }
-                return ResponseEnvelope(
-                    requestId = parts[0],
-                    status =
-                        runCatching { BridgeResponseStatus.valueOf(parts[1]) }
-                            .getOrElse { return null },
-                    message = decodeBase64(parts[2]).ifBlank { null },
-                    payload = decodeBase64(parts[3]).ifBlank { null },
-                    responderNode = parts[4].ifBlank { null },
-                )
-            }
         }
     }
 
@@ -502,7 +174,10 @@ class RedissonBridgeService private constructor(
             nodeId: BridgeNodeId,
             namespace: String,
             redis: RedisBridgeSettings,
+            maxPendingRequests: Int,
             logWarning: (String) -> Unit,
+            logger: Logger,
+            debugLoggingEnabled: () -> Boolean,
         ): RedissonBridgeService? {
             return runCatching {
                 val configClass = Class.forName("org.redisson.config.Config")
@@ -538,6 +213,10 @@ class RedissonBridgeService private constructor(
                     localNodeId = nodeId,
                     namespace = namespace,
                     client = client,
+                    maxPendingRequests = maxPendingRequests,
+                    logWarning = logWarning,
+                    logger = logger,
+                    debugLoggingEnabled = debugLoggingEnabled,
                 )
             }.onFailure { error ->
                 logWarning("Redisson bridge initialization failed: ${error.describeBridgeFailure()}")
@@ -562,17 +241,4 @@ class RedissonBridgeService private constructor(
             return current
         }
     }
-}
-
-private fun encodeBase64(value: String): String {
-    return Base64.getUrlEncoder()
-        .withoutPadding()
-        .encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-}
-
-private fun decodeBase64(value: String): String {
-    if (value.isBlank()) {
-        return ""
-    }
-    return String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
 }

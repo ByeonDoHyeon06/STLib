@@ -18,3 +18,6 @@ permissions:
   stlib.command.reload:
     description: Allows reloading STLib runtime configuration
     default: op
+  stlib.command.doctor:
+    description: Allows running STLib doctor diagnostics
+    default: op

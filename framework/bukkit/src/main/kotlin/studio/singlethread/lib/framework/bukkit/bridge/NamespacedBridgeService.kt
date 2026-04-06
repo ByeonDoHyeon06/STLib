@@ -3,6 +3,7 @@ package studio.singlethread.lib.framework.bukkit.bridge
 import studio.singlethread.lib.framework.api.bridge.BridgeChannel
 import studio.singlethread.lib.framework.api.bridge.BridgeCodec
 import studio.singlethread.lib.framework.api.bridge.BridgeListener
+import studio.singlethread.lib.framework.api.bridge.BridgeMetricsSnapshot
 import studio.singlethread.lib.framework.api.bridge.BridgeNodeId
 import studio.singlethread.lib.framework.api.bridge.BridgeRequestHandler
 import studio.singlethread.lib.framework.api.bridge.BridgeResponse
@@ -17,6 +18,10 @@ class NamespacedBridgeService(
 ) : BridgeService {
     override fun nodeId(): BridgeNodeId {
         return delegate.nodeId()
+    }
+
+    override fun metrics(): BridgeMetricsSnapshot {
+        return delegate.metrics()
     }
 
     override fun publish(

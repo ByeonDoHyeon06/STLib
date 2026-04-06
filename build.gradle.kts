@@ -138,15 +138,29 @@ tasks {
         description = "Runs the primary STLib verification matrix (tests + compile boundaries)."
         dependsOn(
             ":framework:api:test",
+            ":framework:kernel:test",
             ":framework:bukkit:test",
-            ":framework:kernel:compileKotlin",
-            ":framework:core:compileKotlin",
+            ":framework:core:test",
             ":configurate:test",
+            ":storage:common:test",
+            ":storage:jdbc:test",
+            ":storage:json:test",
             ":registry:common:test",
             ":registry:itemsadder:test",
             ":registry:oraxen:test",
             ":registry:nexo:test",
+            ":registry:mmoitems:test",
+            ":registry:ecoitems:test",
+            ":registry:vanilla:test",
+            ":dependency:common:compileKotlin",
+            ":dependency:bukkit:compileKotlin",
+            ":dependency:velocity:compileKotlin",
+            ":dependency:bungee:compileKotlin",
+            ":platform:common:compileKotlin",
             ":platform:bukkit:compileKotlin",
+            ":platform:folia:compileKotlin",
+            ":platform:velocity:compileKotlin",
+            ":platform:bungee:compileKotlin",
         )
     }
 
@@ -157,6 +171,13 @@ tasks {
         if (project.findProject(":stlib-example-consumer") != null) {
             dependsOn(":stlib-example-consumer:build")
         }
+    }
+
+    register("qualityGate") {
+        group = "verification"
+        description = "Runs CI/local quality gate: verification matrix + production build."
+        dependsOn("verificationMatrix")
+        dependsOn("build")
     }
 
     processResources {

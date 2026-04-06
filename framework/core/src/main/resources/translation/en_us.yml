@@ -1,8 +1,6 @@
 command:
   stlib:
     description: "Show STLib runtime status"
-  stlibgui:
-    description: "Open STPlugin dashboard"
 stlib:
   lifecycle:
     initialize: "STLib initialize phase"
@@ -11,8 +9,9 @@ stlib:
     disabled: "STLib disabled"
   log:
     command_invoked: "/stlib invoked by {sender}"
-    gui_invoked: "/stlibgui invoked by {sender}"
+    gui_invoked: "/stlib gui invoked by {sender}"
     reload_invoked: "/stlib reload invoked by {sender}"
+    doctor_invoked: "/stlib doctor invoked by {sender}"
   command:
     player_only: "<red>This command can only be used by players.</red>"
     backend: "STLib backend: {backend}"
@@ -21,6 +20,15 @@ stlib:
     reload:
       success: "<green>Reload complete:</green> configs={configs}, profile={profile}, dashboard={dashboard}, persist={persist}, persistActive={persist_active}, cmdMetrics={command_metrics}, scheduler={scheduler}, di={di_discovered}/{di_validated}, bridgeMode={bridge_mode}, bridgeDistributed={bridge_distributed}, bridgeNode={bridge_node}"
       failed: "<red>Reload failed:</red> {reason}"
+    doctor:
+      generated_at: "<gray>Generated at:</gray> <white>{time}</white>"
+      core: "<gray>CoreOps:</gray> profile={profile}, dashboard={dashboard}, persist={persist_enabled}/{persist_active}, scheduler={scheduler}, cmdMetrics={command_metrics}, di={di_discovered}/{di_validated}"
+      bridge: "<gray>Bridge:</gray> mode={mode}, distributed={distributed}, redisConnected={redis_connected}"
+      bridge_metrics: "<gray>Bridge Metrics:</gray> pending={pending}, submitted={submitted}, timeouts={timeouts}, backpressureRejected={backpressure_rejected}, lateResponses={late_responses}, targetMismatch={target_mismatch}"
+      bridge_issues: "<yellow>Bridge issues:</yellow> {issues}"
+      plugins: "<gray>Plugins:</gray> total={total}, degraded={degraded}"
+      healthy: "<green>All STPlugins are healthy.</green>"
+      degraded_plugins: "<yellow>Degraded plugins:</yellow> {plugins}"
   gui:
     title:
       list: "<gold>STPlugin Dashboard</gold> <gray>({page}/{total})</gray>"
