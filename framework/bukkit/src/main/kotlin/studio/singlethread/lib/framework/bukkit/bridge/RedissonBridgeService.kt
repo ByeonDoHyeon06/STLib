@@ -68,7 +68,7 @@ class RedissonBridgeService private constructor(
         if (closed.get()) {
             return
         }
-        metrics.markPublished()
+        metrics.published()
         transport.publish(
             type = "pub",
             channel = channel,

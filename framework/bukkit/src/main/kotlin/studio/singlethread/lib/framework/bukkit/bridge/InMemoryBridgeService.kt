@@ -62,7 +62,7 @@ class InMemoryBridgeService(
         if (closed.get()) {
             return
         }
-        metrics.markPublished()
+        metrics.published()
 
         val key = normalize(channel)
         subscribers[key]
@@ -186,10 +186,10 @@ class InMemoryBridgeService(
         timeoutMillis: Long,
         targetNode: BridgeNodeId?,
     ): CompletableFuture<BridgeResponse<Res>> {
-        metrics.markRequestSubmitted()
+        metrics.requestSubmitted()
         if (inFlightRequests.incrementAndGet() > maxPendingRequests) {
             inFlightRequests.decrementAndGet()
-            metrics.markRequestRejectedBackpressure()
+            metrics.requestRejectedBackpressure()
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.ERROR,
@@ -201,7 +201,7 @@ class InMemoryBridgeService(
 
         if (closed.get()) {
             inFlightRequests.decrementAndGet()
-            metrics.markRequestErrored()
+            metrics.requestCompleted(BridgeResponseStatus.ERROR)
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.ERROR,
@@ -213,7 +213,7 @@ class InMemoryBridgeService(
 
         if (targetNode != null && targetNode != localNodeId) {
             inFlightRequests.decrementAndGet()
-            metrics.markRequestNoHandler()
+            metrics.requestCompleted(BridgeResponseStatus.NO_HANDLER)
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.NO_HANDLER,
@@ -227,7 +227,7 @@ class InMemoryBridgeService(
         val handlers = requestHandlers[key]
         if (handlers.isNullOrEmpty()) {
             inFlightRequests.decrementAndGet()
-            metrics.markRequestNoHandler()
+            metrics.requestCompleted(BridgeResponseStatus.NO_HANDLER)
             return completedResponse(
                 BridgeResponse(
                     status = BridgeResponseStatus.NO_HANDLER,
@@ -241,8 +241,8 @@ class InMemoryBridgeService(
             runCatching { requestCodec.encode(payload) }
                 .getOrElse { error ->
                     inFlightRequests.decrementAndGet()
-                    metrics.markDecodeFailure()
-                    metrics.markRequestErrored()
+                    metrics.decodeFailure()
+                    metrics.requestCompleted(BridgeResponseStatus.ERROR)
                     return completedResponse(
                         BridgeResponse(
                             status = BridgeResponseStatus.ERROR,
@@ -338,7 +338,7 @@ class InMemoryBridgeService(
         pending.timeoutTask.get()?.cancel(false)
         pending.future.complete(response)
         inFlightRequests.decrementAndGet()
-        markRequestStatus(response.status)
+        metrics.requestCompleted(response.status)
         return true
     }
 
@@ -350,7 +350,7 @@ class InMemoryBridgeService(
 
         pending.timeoutTask.get()?.cancel(false)
         inFlightRequests.decrementAndGet()
-        metrics.markRequestErrored()
+        metrics.requestCompleted(BridgeResponseStatus.ERROR)
     }
 
     private fun failAllPendingRequests() {
@@ -409,7 +409,7 @@ class InMemoryBridgeService(
                     responderNode = localNodeId,
                 )
             }.getOrElse { error ->
-                metrics.markDecodeFailure()
+                metrics.decodeFailure()
                 BridgeResponse(
                     status = BridgeResponseStatus.ERROR,
                     message = error.message ?: "failed to decode bridge response payload",
@@ -470,15 +470,6 @@ class InMemoryBridgeService(
 
     private fun normalize(channel: BridgeChannel): String {
         return channel.asString().trim().lowercase()
-    }
-
-    private fun markRequestStatus(status: BridgeResponseStatus) {
-        when (status) {
-            BridgeResponseStatus.SUCCESS -> metrics.markRequestSucceeded()
-            BridgeResponseStatus.TIMEOUT -> metrics.markRequestTimedOut()
-            BridgeResponseStatus.NO_HANDLER -> metrics.markRequestNoHandler()
-            BridgeResponseStatus.ERROR -> metrics.markRequestErrored()
-        }
     }
 
     private fun <T : Any> completedResponse(response: BridgeResponse<T>): CompletableFuture<BridgeResponse<T>> {

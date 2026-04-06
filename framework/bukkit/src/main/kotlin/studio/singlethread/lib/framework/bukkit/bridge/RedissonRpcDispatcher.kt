@@ -107,9 +107,9 @@ internal class RedissonRpcDispatcher(
         timeoutMillis: Long,
         targetNode: BridgeNodeId?,
     ): CompletableFuture<BridgeResponse<Res>> {
-        metrics.markRequestSubmitted()
+        metrics.requestSubmitted()
         if (!tryAcquireInFlightSlot()) {
-            metrics.markRequestRejectedBackpressure()
+            metrics.requestRejectedBackpressure()
             return CompletableFuture.completedFuture(
                 BridgeResponse(
                     status = BridgeResponseStatus.ERROR,
@@ -166,7 +166,7 @@ internal class RedissonRpcDispatcher(
                                         responderNode = envelope.responderNode?.let(::BridgeNodeId),
                                     )
                                 }.getOrElse { error ->
-                                    metrics.markDecodeFailure()
+                                    metrics.decodeFailure()
                                     BridgeResponse(
                                         status = BridgeResponseStatus.ERROR,
                                         message = error.message ?: "failed to decode bridge response",
@@ -195,8 +195,8 @@ internal class RedissonRpcDispatcher(
                                     message = envelope.message,
                                     responderNode = envelope.responderNode?.let(::BridgeNodeId),
                                 )
-                        }
-                    markRequestStatus(response.status)
+                            }
+                    metrics.requestCompleted(response.status)
                     future.complete(response)
                 }
 
@@ -217,8 +217,8 @@ internal class RedissonRpcDispatcher(
                                     BridgeResponseStatus.TIMEOUT
                                 }
                             when (status) {
-                                BridgeResponseStatus.NO_HANDLER -> metrics.markRequestNoHandler()
-                                BridgeResponseStatus.TIMEOUT -> metrics.markRequestTimedOut()
+                                BridgeResponseStatus.NO_HANDLER -> metrics.requestCompleted(BridgeResponseStatus.NO_HANDLER)
+                                BridgeResponseStatus.TIMEOUT -> metrics.requestCompleted(BridgeResponseStatus.TIMEOUT)
                                 else -> Unit
                             }
                             val message =
@@ -243,7 +243,7 @@ internal class RedissonRpcDispatcher(
             val encodedPayload =
                 runCatching { requestCodec.encode(payload) }
                     .getOrElse { error ->
-                        metrics.markDecodeFailure()
+                        metrics.decodeFailure()
                         throw IllegalStateException(
                             error.message ?: "failed to encode bridge request payload",
                             error,
@@ -258,7 +258,7 @@ internal class RedissonRpcDispatcher(
                 )
             transport.publishRaw(requestTopic, requestEnvelope.encode())
         }.onFailure { error ->
-            metrics.markRequestErrored()
+            metrics.requestCompleted(BridgeResponseStatus.ERROR)
             val message =
                 error.message
                     ?.ifBlank { null }
@@ -305,7 +305,7 @@ internal class RedissonRpcDispatcher(
     ) {
         val envelope =
             RequestEnvelope.decode(message) ?: run {
-                metrics.markDecodeFailure()
+                metrics.decodeFailure()
                 return
             }
         if (envelope.targetNode != null && envelope.targetNode != localNodeId.value) {
@@ -344,21 +344,21 @@ internal class RedissonRpcDispatcher(
                 transport.addListener(type = "res", channel = channel) { message ->
                     val envelope =
                         ResponseEnvelope.decode(message) ?: run {
-                            metrics.markDecodeFailure()
+                            metrics.decodeFailure()
                             return@addListener
                         }
                     val pending = pendingResponses[envelope.requestId]
                     if (pending == null) {
-                        metrics.markResponseLate()
+                        metrics.responseLate()
                         return@addListener
                     }
                     val expectedResponder = pending.expectedResponderNode
                     if (expectedResponder != null && envelope.responderNode != expectedResponder) {
-                        metrics.markResponseTargetMismatched()
+                        metrics.responseTargetMismatched()
                         return@addListener
                     }
                     if (pendingResponses.remove(envelope.requestId, pending)) {
-                        metrics.markResponseMatched()
+                        metrics.responseMatched()
                         pending.complete(envelope)
                     }
                 }
@@ -456,15 +456,6 @@ internal class RedissonRpcDispatcher(
 
     private fun normalize(channel: BridgeChannel): String {
         return channel.asString().lowercase()
-    }
-
-    private fun markRequestStatus(status: BridgeResponseStatus) {
-        when (status) {
-            BridgeResponseStatus.SUCCESS -> metrics.markRequestSucceeded()
-            BridgeResponseStatus.TIMEOUT -> metrics.markRequestTimedOut()
-            BridgeResponseStatus.NO_HANDLER -> metrics.markRequestNoHandler()
-            BridgeResponseStatus.ERROR -> metrics.markRequestErrored()
-        }
     }
 
     private fun tryAcquireInFlightSlot(): Boolean {

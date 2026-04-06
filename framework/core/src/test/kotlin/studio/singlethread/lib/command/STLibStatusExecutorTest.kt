@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import studio.singlethread.lib.framework.api.command.CommandContext
 import studio.singlethread.lib.framework.api.command.CommandResponseChannel
+import studio.singlethread.lib.framework.bukkit.management.STPluginStatus
 import studio.singlethread.lib.operations.STLibStatusExecutor
 import studio.singlethread.lib.operations.STLibStatusPlugin
 import studio.singlethread.lib.operations.STLibStatusSnapshot
@@ -34,8 +35,8 @@ class STLibStatusExecutorTest {
         val snapshot = STLibStatusSnapshot(
             storageBackend = "json",
             plugins = listOf(
-                STLibStatusPlugin(name = "STLib", version = "1.0.0", status = "enabled"),
-                STLibStatusPlugin(name = "Example", version = "0.1.0", status = "loaded"),
+                STLibStatusPlugin(name = "STLib", version = "1.0.0", status = STPluginStatus.ENABLED),
+                STLibStatusPlugin(name = "Example", version = "0.1.0", status = STPluginStatus.LOADED),
             ),
         )
 

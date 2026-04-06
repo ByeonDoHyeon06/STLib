@@ -1,6 +1,7 @@
 package studio.singlethread.lib.framework.bukkit.bridge
 
 import studio.singlethread.lib.framework.api.bridge.BridgeMetricsSnapshot
+import studio.singlethread.lib.framework.api.bridge.BridgeResponseStatus
 import java.util.concurrent.atomic.AtomicLong
 
 internal class BridgeMetricsRecorder(
@@ -18,48 +19,41 @@ internal class BridgeMetricsRecorder(
     private val responseTargetMismatched = AtomicLong(0L)
     private val decodeFailures = AtomicLong(0L)
 
-    fun markPublished() {
+    fun published() {
         publishedMessages.incrementAndGet()
     }
 
-    fun markRequestSubmitted() {
+    fun requestSubmitted() {
         requestSubmitted.incrementAndGet()
     }
 
-    fun markRequestSucceeded() {
-        requestSucceeded.incrementAndGet()
-    }
-
-    fun markRequestTimedOut() {
-        requestTimedOut.incrementAndGet()
-    }
-
-    fun markRequestNoHandler() {
-        requestNoHandler.incrementAndGet()
-    }
-
-    fun markRequestErrored() {
-        requestErrored.incrementAndGet()
-    }
-
-    fun markRequestRejectedBackpressure() {
+    fun requestRejectedBackpressure() {
         requestRejectedBackpressure.incrementAndGet()
     }
 
-    fun markResponseMatched() {
+    fun responseMatched() {
         responseMatched.incrementAndGet()
     }
 
-    fun markResponseLate() {
+    fun responseLate() {
         responseLate.incrementAndGet()
     }
 
-    fun markResponseTargetMismatched() {
+    fun responseTargetMismatched() {
         responseTargetMismatched.incrementAndGet()
     }
 
-    fun markDecodeFailure() {
+    fun decodeFailure() {
         decodeFailures.incrementAndGet()
+    }
+
+    fun requestCompleted(status: BridgeResponseStatus) {
+        when (status) {
+            BridgeResponseStatus.SUCCESS -> requestSucceeded.incrementAndGet()
+            BridgeResponseStatus.TIMEOUT -> requestTimedOut.incrementAndGet()
+            BridgeResponseStatus.NO_HANDLER -> requestNoHandler.incrementAndGet()
+            BridgeResponseStatus.ERROR -> requestErrored.incrementAndGet()
+        }
     }
 
     fun snapshot(pendingRequestsOverride: Int? = null): BridgeMetricsSnapshot {

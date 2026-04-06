@@ -1,8 +1,8 @@
 package studio.singlethread.lib.framework.api.command
 
-private class CommandNodeDslSupport(
-    private val state: MutableCommandNodeState,
-) {
+abstract class CommandNodeDslScope {
+    private val state: MutableCommandNodeState = MutableCommandNodeState()
+
     var permission: String?
         get() = state.permission
         set(value) {
@@ -176,142 +176,46 @@ private class CommandNodeDslSupport(
     fun executes(executor: CommandExecutor) {
         state.executor = executor
     }
+
+    protected fun addChild(node: CommandNodeSpec) {
+        state.children += node
+    }
+
+    protected fun snapshotPermission(): String? = state.permission
+
+    protected fun snapshotAliases(): List<String> = state.aliases.toList()
+
+    protected fun snapshotSenderConstraint(): CommandSenderConstraint = state.senderConstraint
+
+    protected fun snapshotRequirement(): CommandRequirement? = state.requirement
+
+    protected fun snapshotArguments(): List<CommandArgumentSpec> = state.arguments.toList()
+
+    protected fun snapshotChildren(): List<CommandNodeSpec> = state.children.toList()
+
+    protected fun snapshotExecutor(): CommandExecutor? = state.executor
 }
 
 class CommandDslBuilder internal constructor(
     private val name: String,
-) {
+) : CommandNodeDslScope() {
     var description: String = ""
-
-    private val state: MutableCommandNodeState = MutableCommandNodeState()
-    private val dslSupport: CommandNodeDslSupport = CommandNodeDslSupport(state)
-
-    var permission: String?
-        get() = dslSupport.permission
-        set(value) {
-            dslSupport.permission = value
-        }
-
-    fun aliases(vararg values: String) {
-        dslSupport.aliases(*values)
-    }
-
-    fun sender(constraint: CommandSenderConstraint) {
-        dslSupport.sender(constraint)
-    }
-
-    fun requires(requirement: CommandRequirement) {
-        dslSupport.requires(requirement)
-    }
-
-    fun argument(
-        kind: CommandArgumentKind,
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.argument(kind, name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun string(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.string(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun greedyString(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.greedyString(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun int(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.int(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun double(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.double(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun boolean(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.boolean(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun player(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.player(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun offlinePlayer(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.offlinePlayer(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun world(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.world(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun location(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.location(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun executes(executor: CommandExecutor) {
-        dslSupport.executes(executor)
-    }
 
     fun literal(
         literal: String,
         definition: CommandNodeTree,
     ) {
-        state.children += buildChildNode(path = name, literal = literal, definition = definition)
+        addChild(buildChildNode(path = name, literal = literal, definition = definition))
     }
 
     internal fun build(): CommandDefinition {
-        val snapshot = state.snapshot()
-        CommandDefinitionValidator.validateArgumentOrdering(snapshot.arguments, scope = "command '$name'")
+        val aliases = snapshotAliases()
+        val arguments = snapshotArguments()
+        val children = snapshotChildren()
+        CommandDefinitionValidator.validateArgumentOrdering(arguments, scope = "command '$name'")
         CommandDefinitionValidator.validateOwnAliases(
             primaryToken = name,
-            aliases = snapshot.aliases,
+            aliases = aliases,
             scope = "command '$name'",
         )
 
@@ -319,19 +223,19 @@ class CommandDslBuilder internal constructor(
             CommandDefinition(
                 name = name,
                 description = description,
-                permission = snapshot.permission,
-                aliases = snapshot.aliases,
-                senderConstraint = snapshot.senderConstraint,
-                requirement = snapshot.requirement,
-                arguments = snapshot.arguments,
-                children = snapshot.children,
-                executor = snapshot.executor,
+                permission = snapshotPermission(),
+                aliases = aliases,
+                senderConstraint = snapshotSenderConstraint(),
+                requirement = snapshotRequirement(),
+                arguments = arguments,
+                children = children,
+                executor = snapshotExecutor(),
             )
 
         require(definition.executableEndpointCount() > 0) {
             "Command '$name' must have at least one executes { ... } endpoint"
         }
-        CommandDefinitionValidator.validateSiblingTokenUniqueness(definition.children, scope = "command '$name'")
+        CommandDefinitionValidator.validateSiblingTokenUniqueness(children, scope = "command '$name'")
 
         return definition
     }
@@ -340,155 +244,41 @@ class CommandDslBuilder internal constructor(
 class CommandNodeDslBuilder internal constructor(
     val path: String,
     private val literal: String,
-) {
-    private val state: MutableCommandNodeState = MutableCommandNodeState()
-    private val dslSupport: CommandNodeDslSupport = CommandNodeDslSupport(state)
-
-    var permission: String?
-        get() = dslSupport.permission
-        set(value) {
-            dslSupport.permission = value
-        }
-
-    fun aliases(vararg values: String) {
-        dslSupport.aliases(*values)
-    }
-
-    fun sender(constraint: CommandSenderConstraint) {
-        dslSupport.sender(constraint)
-    }
-
-    fun requires(requirement: CommandRequirement) {
-        dslSupport.requires(requirement)
-    }
-
-    fun argument(
-        kind: CommandArgumentKind,
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.argument(kind, name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun string(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.string(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun greedyString(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.greedyString(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun int(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.int(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun double(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.double(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun boolean(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.boolean(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun player(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.player(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun offlinePlayer(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.offlinePlayer(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun world(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.world(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun location(
-        name: String,
-        optional: Boolean = false,
-        suggestions: List<String> = emptyList(),
-        dynamicSuggestions: CommandSuggestionProvider? = null,
-    ) {
-        dslSupport.location(name, optional, suggestions, dynamicSuggestions)
-    }
-
-    fun executes(executor: CommandExecutor) {
-        dslSupport.executes(executor)
-    }
-
+) : CommandNodeDslScope() {
     fun literal(
         literal: String,
         definition: CommandNodeTree,
     ) {
-        state.children += buildChildNode(path = path, literal = literal, definition = definition)
+        addChild(buildChildNode(path = path, literal = literal, definition = definition))
     }
 
     internal fun build(): CommandNodeSpec {
-        val snapshot = state.snapshot()
-        CommandDefinitionValidator.validateArgumentOrdering(snapshot.arguments, scope = "node '$path'")
+        val aliases = snapshotAliases()
+        val arguments = snapshotArguments()
+        val children = snapshotChildren()
+        CommandDefinitionValidator.validateArgumentOrdering(arguments, scope = "node '$path'")
         CommandDefinitionValidator.validateOwnAliases(
             primaryToken = literal,
-            aliases = snapshot.aliases,
+            aliases = aliases,
             scope = "node '$path'",
         )
 
         val node =
             CommandNodeSpec(
                 literal = literal,
-                permission = snapshot.permission,
-                aliases = snapshot.aliases,
-                senderConstraint = snapshot.senderConstraint,
-                requirement = snapshot.requirement,
-                arguments = snapshot.arguments,
-                children = snapshot.children,
-                executor = snapshot.executor,
+                permission = snapshotPermission(),
+                aliases = aliases,
+                senderConstraint = snapshotSenderConstraint(),
+                requirement = snapshotRequirement(),
+                arguments = arguments,
+                children = children,
+                executor = snapshotExecutor(),
             )
 
         require(node.executor != null || node.children.isNotEmpty()) {
             "Node '$path' must define executes { ... } or contain child literals"
         }
-        CommandDefinitionValidator.validateSiblingTokenUniqueness(node.children, scope = "node '$path'")
+        CommandDefinitionValidator.validateSiblingTokenUniqueness(children, scope = "node '$path'")
 
         return node
     }
@@ -512,28 +302,6 @@ private data class MutableCommandNodeState(
     val arguments: MutableList<CommandArgumentSpec> = mutableListOf(),
     val children: MutableList<CommandNodeSpec> = mutableListOf(),
     var executor: CommandExecutor? = null,
-) {
-    fun snapshot(): CommandNodeStateSnapshot {
-        return CommandNodeStateSnapshot(
-            permission = permission,
-            aliases = aliases.toList(),
-            senderConstraint = senderConstraint,
-            requirement = requirement,
-            arguments = arguments.toList(),
-            children = children.toList(),
-            executor = executor,
-        )
-    }
-}
-
-private data class CommandNodeStateSnapshot(
-    val permission: String?,
-    val aliases: List<String>,
-    val senderConstraint: CommandSenderConstraint,
-    val requirement: CommandRequirement?,
-    val arguments: List<CommandArgumentSpec>,
-    val children: List<CommandNodeSpec>,
-    val executor: CommandExecutor?,
 )
 
 private fun buildChildNode(

@@ -31,13 +31,14 @@ class STLibStatusExecutor(
         )
 
         snapshot.plugins.forEach { plugin ->
+            val statusLabel = plugin.status.name.lowercase()
             val line =
                 translate(
                     "stlib.command.plugin_entry",
                     mapOf(
                         "name" to plugin.name,
                         "version" to plugin.version,
-                        "status" to plugin.status,
+                        "status" to statusLabel,
                     ),
                 )
             context.reply(line)

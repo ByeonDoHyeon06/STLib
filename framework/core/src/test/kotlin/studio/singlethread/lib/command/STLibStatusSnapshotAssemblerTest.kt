@@ -26,8 +26,14 @@ class STLibStatusSnapshotAssemblerTest {
 
         assertEquals("json", runtime.storageBackend)
         assertEquals(2, runtime.plugins.size)
-        assertEquals(STLibStatusPlugin(name = "Alpha", version = "1.0.0", status = "enabled"), runtime.plugins[0])
-        assertEquals(STLibStatusPlugin(name = "Beta", version = "2.3.4", status = "disabled"), runtime.plugins[1])
+        assertEquals(
+            STLibStatusPlugin(name = "Alpha", version = "1.0.0", status = STPluginStatus.ENABLED),
+            runtime.plugins[0],
+        )
+        assertEquals(
+            STLibStatusPlugin(name = "Beta", version = "2.3.4", status = STPluginStatus.DISABLED),
+            runtime.plugins[1],
+        )
     }
 
     private fun snapshot(

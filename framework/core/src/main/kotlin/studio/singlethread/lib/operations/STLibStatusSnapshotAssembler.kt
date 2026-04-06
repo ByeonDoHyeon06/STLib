@@ -14,7 +14,7 @@ class STLibStatusSnapshotAssembler(
                     STLibStatusPlugin(
                         name = plugin.name,
                         version = plugin.version,
-                        status = plugin.status.name.lowercase(),
+                        status = plugin.status,
                     )
                 },
         )
